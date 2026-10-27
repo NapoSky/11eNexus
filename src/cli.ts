@@ -24,6 +24,7 @@ import {
 } from './application/import-preparation.js';
 import { renderImportReview, renderImportSummary } from './presentation/import-review.js';
 import { adminDiagnostic } from './infrastructure/admin-diagnostics.js';
+import { enableRoleMentions } from './application/role-mentions.js';
 
 let stage = 'initialization';
 
@@ -39,7 +40,7 @@ async function main(): Promise<void> {
   const command = process.argv[2];
   if (!command || command === 'help') {
     console.info(
-      '11eNexus admin: doctor | inventory --output FILE | prepare --inventory FILE --output FILE [--rawg] [--locale fr|en] | plan --manifest FILE --output FILE | apply --plan FILE --apply | setup [--channel ID] | backup --output FILE',
+      '11eNexus admin: doctor | inventory --output FILE | prepare --inventory FILE --output FILE [--rawg] [--locale fr|en] | plan --manifest FILE --output FILE | apply --plan FILE --apply | role-mentions [--apply] | setup [--channel ID] | backup --output FILE',
     );
     return;
   }
@@ -116,12 +117,14 @@ async function main(): Promise<void> {
   await languagesReady;
   const app = bootstrap();
   const owner = randomUUID();
-  const mutations = ['setup', 'apply'];
+  const mutation =
+    ['setup', 'apply'].includes(command) ||
+    (command === 'role-mentions' && process.argv.includes('--apply'));
   let leased = false;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   try {
     // Read-only probes may coexist with runtime. Mutations may not.
-    if (mutations.includes(command)) {
+    if (mutation) {
       leased = app.repository.acquireLease(owner, Date.now());
       if (!leased) throw new DomainError('inProgress');
       heartbeat = setInterval(() => {
@@ -137,6 +140,16 @@ async function main(): Promise<void> {
       app.client.login(app.settings.token),
     ]);
     stage = command;
+    if (command === 'role-mentions') {
+      const report = await enableRoleMentions(
+        app.repository,
+        app.gateway,
+        process.argv.includes('--apply'),
+      );
+      console.info(JSON.stringify(report, null, 2));
+      if (report.errors.length) process.exitCode = 1;
+      return;
+    }
     if (command === 'doctor') {
       const world = await app.gateway.snapshot();
       console.info(
@@ -155,6 +168,10 @@ async function main(): Promise<void> {
             uneditableImportedRoles: app.repository
               .games()
               .filter((g) => !world.roles.find((r) => r.id === g.roleId)?.editable)
+              .map((g) => g.name),
+            unmentionableImportedRoles: app.repository
+              .games()
+              .filter((g) => world.roles.some((r) => r.id === g.roleId && !r.mentionable))
               .map((g) => g.name),
           },
           null,

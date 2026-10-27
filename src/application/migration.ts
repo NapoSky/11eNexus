@@ -211,12 +211,12 @@ export function buildPlan(
         ...(entry.iconRoleId ? { iconRoleId: entry.iconRoleId } : {}),
       });
       changes.push(
-        `${entry.name}: create a new notification role with a verified icon, zero global permissions, no unrestricted mentions and zero initial subscribers; keep channel ${entry.channelId}; target ${entry.state}`,
+        `${entry.name}: create a mentionable notification role with a verified icon, zero global permissions and zero initial subscribers; keep channel ${entry.channelId}; target ${entry.state}`,
       );
       continue;
     }
     changes.push(
-      `${entry.name}: import current role holders; keep channel ${entry.channelId}; normalize Syndiqué visibility; target ${entry.state}; disable unrestricted role mentions; ${game.canRecycle ? 'Nexus-created role keeps guarded recycling eligibility' : 'legacy role recycling disabled'}`,
+      `${entry.name}: import current role holders; keep channel ${entry.channelId}; normalize Syndiqué visibility; target ${entry.state}; enable direct role mentions; ${game.canRecycle ? 'Nexus-created role keeps guarded recycling eligibility' : 'legacy role recycling disabled'}`,
     );
   }
   if (roleCreations.length && !world.roleIcons)

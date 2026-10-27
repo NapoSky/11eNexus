@@ -16,9 +16,20 @@ Node 24 · TypeScript 7 · discord.js · i18next · SQLite intégré à Node · 
 
 ### Mentions des joueurs
 
-Les rôles de notification sont **non mentionnables librement**. Depuis la fiche personnelle d’un jeu actif, « Prévenir les joueurs » ouvre un message puis le bot mentionne uniquement le rôle concerné, après vérification du rôle Syndiqué. Temporisation : 15 minutes par membre et jeu. Tout `@everyone`, autre rôle ou utilisateur inséré dans le texte est privé de notification par `allowedMentions`.
+Les rôles de notification sont **mentionnables par les membres** : chacun peut utiliser `@NomDuRôle` dans une discussion pour prévenir les abonnés du jeu. Cette propriété est activée lors de la création, de l’import ou d’une réparation explicite du rôle. Les notifications restent soumises aux préférences personnelles Discord.
 
-Discord ne propose pas de permission native « seul le rôle Syndiqué peut mentionner ce rôle précis ». Le bot utilise donc ce parcours contrôlé. Il lui faut `Mention Everyone`, sans accorder cette permission aux membres. Les notifications finales restent soumises aux préférences personnelles Discord. [Référence officielle](https://docs.discord.com/developers/resources/message#allowed-mentions-object).
+L’action facultative « Prévenir les joueurs », depuis la fiche personnelle d’un jeu actif, reste disponible : le bot mentionne uniquement le rôle concerné après vérification du rôle Syndiqué. Sa temporisation de 15 minutes par membre et jeu concerne uniquement ce bouton, pas les mentions manuelles. Tout `@everyone`, autre rôle ou utilisateur inséré dans son texte est privé de notification par `allowedMentions`. Les autres messages du bot n’envoient aucune mention automatique. [Référence officielle](https://docs.discord.com/developers/resources/message#allowed-mentions-object).
+
+Pour une instance déjà importée, arrêter le bot puis activer les mentions sur les seuls rôles du catalogue, sans refaire l’import :
+
+```sh
+docker compose stop bot
+docker compose run --rm bot node dist/cli.js role-mentions --apply
+docker compose run --rm bot node dist/cli.js doctor
+docker compose up -d
+```
+
+Sans `--apply`, `role-mentions` affiche uniquement les changements prévus. Tous les rôles sont vérifiés avant la première modification ; les rôles supprimés ne sont pas recréés et les rôles hors catalogue ne sont pas modifiés. La commande peut être relancée après une interruption. `doctor` liste les éventuels rôles de jeux encore non mentionnables dans `unmentionableImportedRoles`. La réconciliation habituelle continue de respecter les changements manuels faits dans Discord.
 
 ## Installation
 

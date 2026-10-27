@@ -32,7 +32,7 @@ Un doublon ne doit pas apparaître comme un deuxième jeu pour la même identit�
 pnpm admin plan --manifest data/import-manifest.json --output data/import-plan.json
 ```
 
-Lire `changes` et `errors`, les IDs, les états et le choix du salon. Le plan vérifie l’unicité des identités, les plafonds, la hiérarchie et les permissions globales des rôles. Il annonce l’adoption de la première archive et la normalisation de ses accès, celle des autres salons sélectionnés et la désactivation des mentions libres des rôles. Un plan avec des erreurs ne peut pas être appliqué.
+Lire `changes` et `errors`, les IDs, les états et le choix du salon. Le plan vérifie l’unicité des identités, les plafonds, la hiérarchie et les permissions globales des rôles. Il annonce l’adoption de la première archive et la normalisation de ses accès, celle des autres salons sélectionnés et l’activation des mentions directes des rôles. Un plan avec des erreurs ne peut pas être appliqué.
 
 Si la commande échoue avec `admin_command_failed`, lire `stage`, `errorCode`, `setting` et `hint` lorsqu’ils sont présents. Ces diagnostics distinguent notamment la connexion Discord, la lecture du manifeste et l’écriture du plan, sans afficher les jetons, les requêtes ni les données des membres. Avec Compose, `env_file: .env` injecte déjà les variables : aucun montage supplémentaire du `.env` n’est nécessaire. Les répertoires montés pour SQLite et la sortie du plan doivent être accessibles en écriture à l’UID 1000 ; le manifeste doit être lisible par cet UID.
 
@@ -70,9 +70,11 @@ docker compose run --rm -v "$PWD/data:/work" bot node dist/cli.js apply --plan /
 
 Le conteneur utilise l’UID 1000 : rendre le répertoire de travail accessible à cet UID. La mutation est refusée si l’état structurel de Discord a changé depuis le plan. Les changements de détenteurs des rôles ne l’invalident pas : les abonnements sont relus lors de l’application. Ne pas modifier à la main le JSON du plan ; régénérer depuis le manifeste.
 
-L’import conserve les salons et leurs messages et reprend les abonnés du rôle. Il peut déplacer les salons sélectionnés et les salons en dépassement dans les archives, réécrire leurs dérogations et rendre les rôles non mentionnables. Les rôles importés ne deviennent pas automatiquement recyclables. Il ne supprime aucun salon ni rôle.
+L’import conserve les salons et leurs messages et reprend les abonnés du rôle. Il peut déplacer les salons sélectionnés et les salons en dépassement dans les archives, réécrire leurs dérogations et rendre les rôles mentionnables par les membres. Les rôles importés ne deviennent pas automatiquement recyclables. Il ne supprime aucun salon ni rôle.
 
 ## Après import
+
+Si les rôles ont été importés avec une ancienne version qui bloquait les mentions directes, utiliser `docker compose run --rm bot node dist/cli.js role-mentions --apply`, bot arrêté. Cette opération met uniquement à jour les mentions des rôles existants du catalogue ; elle préserve les salons et les abonnements. Sans `--apply`, la commande sert de prévisualisation. Vérifier ensuite que `doctor` renvoie `unmentionableImportedRoles: []`.
 
 Vérifier depuis un compte Syndiqué : lecture des jeux actifs sans rôle de jeu, invisibilité des archives, parcours d’abonnement, absence de permissions inattendues. Vérifier les admins, le bot et le questionnaire. Publier ensuite le panneau avec `setup`, puis démarrer l’instance.
 

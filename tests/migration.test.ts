@@ -43,6 +43,7 @@ test('reviewed import preserves channel IDs and subscriptions; only affected onb
   expect(g.channelId).toBe(manifest.entries[0]?.channelId);
   expect(f.repository.subscribers(g.id)).toEqual([member.id]);
   expect(g.canRecycle).toBe(false);
+  expect(f.community.world.roles.find((r) => r.id === g.roleId)?.mentionable).toBe(true);
   expect(f.community.removeGameOptions).toHaveBeenCalledWith([g.roleId], [g.channelId]);
   await applyPlan(plan, f.repository, f.community);
   expect(f.community.move).toHaveBeenCalledTimes(1);

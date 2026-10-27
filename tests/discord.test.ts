@@ -10,7 +10,7 @@ import {
 } from 'discord.js';
 import { DiscordCommunity, discordClient } from '../src/infrastructure/discord.js';
 import { config } from '../src/infrastructure/config.js';
-import { archiveId, fixture, game, member, now } from './helpers.js';
+import { archiveId, asset, fixture, game, member, now } from './helpers.js';
 
 let f: ReturnType<typeof fixture>;
 let gateway: DiscordCommunity;
@@ -31,6 +31,34 @@ afterEach(async () => {
 test('the gateway never requests message content intent', () => {
   expect(client.options.intents.has(GatewayIntentBits.GuildMembers)).toBe(true);
   expect(client.options.intents.has(GatewayIntentBits.MessageContent)).toBe(false);
+});
+test('new notification roles are mentionable with no global permissions', async () => {
+  const create = jest.fn(async () => ({ id: 'new-role' }));
+  jest.spyOn(gateway, 'guild').mockResolvedValue({ roles: { create } } as unknown as Guild);
+  await gateway.createRole(game(), asset, 'create');
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({ mentionable: true, permissions: 0n }),
+  );
+});
+test('import and repair enable direct role mentions and leave an already mentionable role alone', async () => {
+  const setMentionable = jest.fn(async () => {});
+  const role = {
+    managed: false,
+    permissions: { bitfield: 0n },
+    mentionable: false,
+    setMentionable,
+  };
+  setMentionable.mockImplementation(async () => {
+    role.mentionable = true;
+  });
+  jest.spyOn(gateway, 'guild').mockResolvedValue({
+    roles: { fetch: async () => role },
+    members: { fetchMe: async () => ({ roles: { highest: { comparePositionTo: () => 1 } } }) },
+  } as unknown as Guild);
+  await gateway.prepareImportedRole('target-role');
+  await gateway.prepareImportedRole('target-role');
+  expect(setMentionable).toHaveBeenCalledTimes(1);
+  expect(setMentionable).toHaveBeenCalledWith(true, expect.any(String));
 });
 test('a notification can mention only the selected role even if text contains everyone or other targets', async () => {
   const g = game();

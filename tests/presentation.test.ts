@@ -89,6 +89,15 @@ test('a game card does not conflate channel visibility and notification preferen
   expect(text).not.toContain('discord.com/channels');
   expect(view.allowedMentions).toEqual({ parse: [] });
 });
+test.each(['fr', 'en'] as const)(
+  'the %s game card identifies the role to mention without pinging it',
+  (language) => {
+    const g = f.add(game());
+    const view = views.game(member, language, g.id);
+    expect(JSON.stringify(view)).toContain(`<@&${g.roleId}>`);
+    expect(view.allowedMentions).toEqual({ parse: [] });
+  },
+);
 test('an accepted proposal links to its active channel while another member cannot view it', () => {
   const g = f.add(game());
   const p = {

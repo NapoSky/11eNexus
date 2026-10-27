@@ -167,6 +167,9 @@ export class Views {
         [
           t(game.state),
           t(subscribed ? 'subscribed' : 'unsubscribed'),
+          game.roleState === 'present' && game.roleId && !game.blocked
+            ? t('mentionHint', { role: `<@&${game.roleId}>` })
+            : '',
           game.state === 'archived' ? t('archiveHint') : '',
           game.roleState === 'recycled' ? t('recycledHint') : '',
           game.blocked ? t('blocked') : '',

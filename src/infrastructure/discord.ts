@@ -184,7 +184,7 @@ export class DiscordCommunity implements Community {
     const role = await guild.roles.create({
       name: game.name.slice(0, 100),
       permissions: 0n,
-      mentionable: false,
+      mentionable: true,
       hoist: false,
       icon: Buffer.from(asset.bytes),
       reason: `11eNexus op:${operationId}`,
@@ -495,7 +495,8 @@ export class DiscordCommunity implements Community {
       me.roles.highest.comparePositionTo(role) <= 0
     )
       throw new DomainError('needsReview');
-    await role.setMentionable(false, '11eNexus: controlled notifications');
+    if (!role.mentionable)
+      await role.setMentionable(true, '11eNexus: members can mention game notifications');
   }
   async importRoleAsset(id: string): Promise<Asset | null> {
     const role = await (await this.guild()).roles.fetch(id);

@@ -76,7 +76,7 @@ export class FakeCommunity implements MigrationCommunity {
       members: [],
       managed: false,
       permissions: '0',
-      mentionable: false,
+      mentionable: true,
       references: [],
       editable: true,
     });
@@ -102,7 +102,10 @@ export class FakeCommunity implements MigrationCommunity {
   });
   notify = jest.fn(async () => {});
   alert = jest.fn(async () => {});
-  prepareImportedRole = jest.fn(async () => {});
+  prepareImportedRole = jest.fn(async (id: string) => {
+    const role = this.world.roles.find((r) => r.id === id);
+    if (role) role.mentionable = true;
+  });
   adoptArchives = jest.fn(async (ids: string[]) => {
     this.world.archiveCategoryIds = [...new Set([...ids, ...this.world.archiveCategoryIds])];
   });

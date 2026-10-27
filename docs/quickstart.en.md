@@ -14,7 +14,9 @@ Notification roles are listed alphabetically. If a role is missing, choose **Cre
 
 Members with the configured Syndiqué role can create or revive one game per rolling 24 hours. New or revived games need a first human message within 48 hours. Established games archive after 30 days, preserving the fifteen most recently active established games. Catalogue: 150 games; archives: up to three hidden categories. Voice channels and events are outside V1.
 
-Subscribing does not revive a game. Creating or reviving does not subscribe or ping anyone. Use the private game card’s **Notify players** action for a controlled role mention; arbitrary mentions inside its text are suppressed. Roles themselves are not freely mentionable.
+Subscribing does not revive a game. Creating or reviving does not subscribe or ping anyone. Members can mention game notification roles directly in conversations. The private game card’s optional **Notify players** action remains available; arbitrary mentions inside its text are suppressed. Its cooldown applies only to that action, not to manual mentions.
+
+For an existing import made with non-mentionable roles, stop the bot and run `docker compose run --rm bot node dist/cli.js role-mentions --apply`, then restart it. This changes only existing catalogue roles, preserving subscriptions and channels. Without `--apply`, the command previews the changes. It checks all roles before updating any and can be rerun after interruption. `doctor` reports any remaining non-mentionable game roles in `unmentionableImportedRoles`. Normal reconciliation still respects manual Discord changes.
 
 Discord wins during reconciliation. Manual channel moves, deleted resources and changed role holders are observed. Ambiguous partial operations require explicit administrator repair. No automatic channel deletion or history merging occurs.
 
