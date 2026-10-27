@@ -214,3 +214,72 @@ test('three full archive categories stop before modifying any channel permission
   await expect(gateway.move(game(), true, 'archive')).rejects.toMatchObject({ code: 'capacity' });
   expect(set).not.toHaveBeenCalled();
 });
+test('a channel already in a full archive can have its permissions normalized without a move', async () => {
+  Object.defineProperty(client, 'user', { value: { id: 'bot' } });
+  f.repository.set('archiveCategories', [archiveId]);
+  const set = jest.fn(async () => {});
+  const setParent = jest.fn(async () => {});
+  const channel = {
+    parentId: archiveId,
+    type: ChannelType.GuildText,
+    permissionOverwrites: { cache: new Collection(), set },
+    setParent,
+  };
+  jest
+    .spyOn(gateway, 'guild')
+    .mockResolvedValue({ channels: { fetch: async () => channel } } as unknown as Guild);
+  await gateway.move(game(), true, 'op');
+  expect(set).toHaveBeenCalled();
+  expect(setParent).not.toHaveBeenCalled();
+});
+test('standby archive adoption hides all textual children and moves only overflow', async () => {
+  Object.defineProperty(client, 'user', { value: { id: 'bot' } });
+  const first = '100000000000000200';
+  const second = '100000000000000201';
+  const acl = () => ({ cache: new Collection(), set: jest.fn(async () => {}) });
+  const category = {
+    id: first,
+    parentId: null,
+    type: ChannelType.GuildCategory,
+    permissionOverwrites: acl(),
+    setName: jest.fn(async () => {}),
+  };
+  const other = {
+    id: second,
+    parentId: null,
+    type: ChannelType.GuildCategory,
+    permissionOverwrites: acl(),
+    setName: jest.fn(async () => {}),
+  };
+  const children = Array.from({ length: 52 }, (_, i) => {
+    const child = {
+      id: String(100000000000000300n + BigInt(i)),
+      parentId: first,
+      type: ChannelType.GuildText,
+      permissionOverwrites: acl(),
+      setParent: jest.fn(async (parent: string) => {
+        child.parentId = parent;
+      }),
+    };
+    return child;
+  });
+  const channels = new Collection<string, unknown>([
+    [first, category],
+    ...children.map((c) => [c.id, c] as [string, unknown]),
+  ]);
+  const create = jest.fn(async () => {
+    channels.set(second, other);
+    return other;
+  });
+  jest
+    .spyOn(gateway, 'guild')
+    .mockResolvedValue({ channels: { fetch: async () => channels, create } } as unknown as Guild);
+  await gateway.adoptArchives([first], 'plan');
+  expect(category.setName).toHaveBeenCalledWith('Archives Nexus · 1', expect.any(String));
+  expect(category.permissionOverwrites.set).toHaveBeenCalled();
+  expect(children.every((c) => c.permissionOverwrites.set.mock.calls.length === 1)).toBe(true);
+  expect(children.filter((c) => c.parentId === first)).toHaveLength(50);
+  expect(children.filter((c) => c.parentId === second)).toHaveLength(2);
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(f.repository.get('archiveCategories')).toEqual([first, second]);
+});

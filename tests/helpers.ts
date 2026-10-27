@@ -103,6 +103,9 @@ export class FakeCommunity implements MigrationCommunity {
   notify = jest.fn(async () => {});
   alert = jest.fn(async () => {});
   prepareImportedRole = jest.fn(async () => {});
+  adoptArchives = jest.fn(async (ids: string[]) => {
+    this.world.archiveCategoryIds = [...new Set([...ids, ...this.world.archiveCategoryIds])];
+  });
   importRoleAsset = jest.fn(async () => asset);
   removeGameOptions = jest.fn(async () => {});
   add(g: Game): void {

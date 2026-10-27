@@ -97,3 +97,65 @@ test('manifests require an explicit confirmation and actual snowflake IDs', () =
     parseManifest({ ...manifest, entries: [{ ...manifest.entries[0], roleId: 'oops' }] }),
   ).toThrow();
 });
+test('a reviewed standby category becomes archive one without losing channel IDs', async () => {
+  const id = '100000000000000200';
+  f.community.world.channels.push({ id, name: 'Standby', type: 4, parentId: null, topic: null });
+  const m = { ...manifest, archiveCategoryIds: [id] };
+  const plan = buildPlan(m, f.community.world, f.repository, 150, activeId);
+  expect(plan.errors).toEqual([]);
+  expect(plan.changes.join('\n')).toContain('including channels outside the catalogue');
+  await applyPlan(plan, f.repository, f.community);
+  expect(f.community.adoptArchives).toHaveBeenCalledWith([id], plan.digest);
+  expect(f.repository.get('archiveAdoption')).toMatchObject({ status: 'completed' });
+  await applyPlan(plan, f.repository, f.community);
+  expect(f.community.adoptArchives).toHaveBeenCalledTimes(1);
+});
+test('a partial archive adoption stops import and rotation until reviewed', async () => {
+  const id = '100000000000000200';
+  f.community.world.channels.push({ id, name: 'Standby', type: 4, parentId: null, topic: null });
+  const plan = buildPlan(
+    { ...manifest, archiveCategoryIds: [id] },
+    f.community.world,
+    f.repository,
+    150,
+    activeId,
+  );
+  f.community.adoptArchives.mockRejectedValueOnce(new Error('network'));
+  await expect(applyPlan(plan, f.repository, f.community)).rejects.toMatchObject({
+    code: 'partial',
+  });
+  expect(f.repository.games()).toHaveLength(0);
+  expect(f.repository.get('archiveAdoption')).toMatchObject({ status: 'review' });
+  await expect(f.nexus.synchronize()).rejects.toMatchObject({ code: 'needsReview' });
+});
+test('archive reuse rejects the active category, excess categories, and nontextual children before changes', () => {
+  expect(
+    buildPlan(
+      { ...manifest, archiveCategoryIds: [activeId] },
+      f.community.world,
+      f.repository,
+      150,
+      activeId,
+    ).errors,
+  ).not.toEqual([]);
+  const id = '100000000000000200';
+  f.community.world.channels.push(
+    { id, name: 'Standby', type: 4, parentId: null, topic: null },
+    { id: '100000000000000201', name: 'Voice', type: 2, parentId: id, topic: null },
+  );
+  expect(
+    buildPlan(
+      { ...manifest, archiveCategoryIds: [id] },
+      f.community.world,
+      f.repository,
+      150,
+      activeId,
+    ).errors.join('\n'),
+  ).toContain('non-textual');
+  expect(() => parseManifest({ ...manifest, archiveCategoryIds: ['wrong'] })).toThrow(
+    'invalidInput',
+  );
+  expect(() => parseManifest({ ...manifest, archiveCategoryIds: [id, id] })).toThrow(
+    'invalidInput',
+  );
+});

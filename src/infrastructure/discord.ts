@@ -200,7 +200,11 @@ export class DiscordCommunity implements Community {
       channel.type === ChannelType.GuildStageVoice
     )
       throw new DomainError('invalidInput');
-    const destination = await this.destination(archive);
+    const alreadyThere = archive
+      ? (this.repository.get<string[]>('archiveCategories') || []).includes(channel.parentId || '')
+      : channel.parentId === this.config.activeCategoryId;
+    const destination =
+      alreadyThere && channel.parentId ? channel.parentId : await this.destination(archive);
     const old = channel.permissionOverwrites.cache.map((o) => ({
       id: o.id,
       type: o.type,
@@ -211,12 +215,85 @@ export class DiscordCommunity implements Community {
     // Apply the restrictive ACL before moving to archives. A failed move is reconciled, never reported as success.
     if (archive)
       await channel.permissionOverwrites.set(this.overwrites(true), `11eNexus op:${operationId}`);
-    await channel.setParent(destination, {
-      lockPermissions: false,
-      reason: `11eNexus op:${operationId}`,
-    });
+    if (channel.parentId !== destination)
+      await channel.setParent(destination, {
+        lockPermissions: false,
+        reason: `11eNexus op:${operationId}`,
+      });
     if (!archive)
       await channel.permissionOverwrites.set(this.overwrites(false), `11eNexus op:${operationId}`);
+  }
+  async adoptArchives(requested: string[], operationId: string): Promise<void> {
+    const guild = await this.guild();
+    const channels = await guild.channels.fetch();
+    const ids = [
+      ...new Set([
+        ...requested,
+        ...(this.repository.get<string[]>('archiveCategories') || []).filter(
+          (id) => channels.get(id)?.type === ChannelType.GuildCategory,
+        ),
+      ]),
+    ];
+    if (
+      ids.length > this.config.maxArchives ||
+      requested.some(
+        (id) =>
+          id === this.config.activeCategoryId ||
+          channels.get(id)?.type !== ChannelType.GuildCategory,
+      ) ||
+      [...channels.values()].some(
+        (c) => c && requested.includes(c.parentId || '') && ![0, 5, 15, 16].includes(c.type),
+      )
+    )
+      throw new DomainError('invalidInput');
+    const total = [...channels.values()].filter((c) => c && ids.includes(c.parentId || '')).length;
+    if (
+      total > this.config.maxArchives * 50 ||
+      channels.size + Math.max(0, Math.ceil(total / 50) - ids.length) > 500
+    )
+      throw new DomainError('capacity');
+    const reason = `11eNexus archive adoption:${operationId}`;
+    for (const id of requested) {
+      const category = channels.get(id)!;
+      if (category.type !== ChannelType.GuildCategory) throw new DomainError('invalidInput');
+      if (this.repository.get(`permissionsBefore:${operationId}:${id}`) === undefined)
+        this.repository.set(
+          `permissionsBefore:${operationId}:${id}`,
+          category.permissionOverwrites.cache.map((o) => ({
+            id: o.id,
+            type: o.type,
+            allow: o.allow.bitfield.toString(),
+            deny: o.deny.bitfield.toString(),
+          })),
+        );
+      await category.permissionOverwrites.set(this.overwrites(true), reason);
+      await category.setName(`Archives Nexus · ${ids.indexOf(id) + 1}`, reason);
+      for (const channel of channels.values()) {
+        if (channel?.parentId !== id || !('permissionOverwrites' in channel)) continue;
+        if (this.repository.get(`permissionsBefore:${operationId}:${channel.id}`) === undefined)
+          this.repository.set(
+            `permissionsBefore:${operationId}:${channel.id}`,
+            channel.permissionOverwrites.cache.map((o) => ({
+              id: o.id,
+              type: o.type,
+              allow: o.allow.bitfield.toString(),
+              deny: o.deny.bitfield.toString(),
+            })),
+          );
+        await channel.permissionOverwrites.set(this.overwrites(true), reason);
+      }
+    }
+    this.repository.set('archiveCategories', ids);
+    for (const id of requested) {
+      const children = [...channels.values()]
+        .filter((c) => c?.parentId === id)
+        .sort((a, b) => a!.id.localeCompare(b!.id));
+      for (const channel of children.slice(50)) {
+        if (!channel || !('setParent' in channel)) throw new DomainError('invalidInput');
+        const destination = await this.destination(true);
+        await channel.setParent(destination, { lockPermissions: false, reason });
+      }
+    }
   }
   async setSubscription(roleId: string, memberId: string, enabled: boolean): Promise<void> {
     const member = await (await this.guild()).members.fetch({ user: memberId, force: true });

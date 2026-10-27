@@ -8,6 +8,8 @@
 4. Import existing games using a reviewed manifest and plan. See [migration instructions](migration.md); existing channels are never adopted automatically.
 5. Explicitly install the panel with `docker compose run --rm bot node dist/cli.js setup`, then `docker compose up -d`.
 
+After generating the inventory, run `pnpm admin prepare --inventory data/inventory.json --output data/import-preparation.json --rawg --locale en`. Open `data/import-preparation.html`, review the proposed matches, and download the confirmed manifest. No JSON needs to be written by hand. Preparation only examines the two specified game categories. The standby category keeps its ID and becomes the first hidden archive; up to two more archives are created as needed. This preparation does not modify Discord. Stop any previous rotation automation before applying the import.
+
 Members with the configured Syndiqué role can create or revive one game per rolling 24 hours. New or revived games need a first human message within 48 hours. Established games archive after 30 days, preserving the fifteen most recently active established games. Catalogue: 150 games; archives: up to three hidden categories. Voice channels and events are outside V1.
 
 Subscribing does not revive a game. Creating or reviving does not subscribe or ping anyone. Use the private game card’s **Notify players** action for a controlled role mention; arbitrary mentions inside its text are suppressed. Roles themselves are not freely mentionable.

@@ -15,6 +15,7 @@ export interface Manifest {
   version: 1;
   entries: ImportEntry[];
   removeGameOptions: boolean;
+  archiveCategoryIds?: string[];
 }
 export interface ImportPlan {
   version: 1;
@@ -26,6 +27,7 @@ export interface ImportPlan {
   digest: string;
 }
 export interface MigrationCommunity extends Community {
+  adoptArchives(ids: string[], operationId: string): Promise<void>;
   prepareImportedRole(id: string): Promise<void>;
   importRoleAsset(id: string): Promise<Asset | null>;
   removeGameOptions(roles: string[], channels: string[]): Promise<void>;
@@ -74,7 +76,20 @@ export function parseManifest(value: unknown): Manifest {
     version: 1,
     entries: value.entries as ImportEntry[],
     removeGameOptions: 'removeGameOptions' in value && value.removeGameOptions === true,
+    ...('archiveCategoryIds' in value
+      ? { archiveCategoryIds: parseArchiveIds(value.archiveCategoryIds) }
+      : {}),
   };
+}
+function parseArchiveIds(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > 3 ||
+    value.some((id) => typeof id !== 'string' || !/^\d{17,20}$/.test(id)) ||
+    new Set(value).size !== value.length
+  )
+    throw new DomainError('invalidInput');
+  return value as string[];
 }
 export function buildPlan(
   manifest: Manifest,
@@ -92,6 +107,20 @@ export function buildPlan(
   const seenRawg = new Set<number>();
   const names = new Set<string>();
   if (!world.complete) errors.push('Incomplete Discord snapshot');
+  const archiveIds = [
+    ...new Set([...(manifest.archiveCategoryIds || []), ...world.archiveCategoryIds]),
+  ];
+  if (archiveIds.length > maxArchives) errors.push('Too many archive categories');
+  for (const id of manifest.archiveCategoryIds || []) {
+    const category = world.channels.find((c) => c.id === id);
+    if (category?.type !== 4 || id === activeCategoryId)
+      errors.push(`Invalid archive category: ${id}`);
+    if (world.channels.some((c) => c.parentId === id && ![0, 5, 15, 16].includes(c.type)))
+      errors.push(`Archive category contains non-textual channels: ${id}`);
+    changes.push(
+      `Archive category ${id}: reuse its ID, rename and hide the category and all its textual children, including channels outside the catalogue; preserve history; distribute any overflow across at most ${maxArchives} archive categories`,
+    );
+  }
   for (const entry of manifest.entries) {
     const channel = world.channels.find((c) => c.id === entry.channelId);
     const role = world.roles.find((r) => r.id === entry.roleId);
@@ -158,13 +187,13 @@ export function buildPlan(
     games.filter((g) => g.state === 'active').map((g) => g.channelId),
   );
   const alreadyArchived = world.channels.filter(
-    (c) => world.archiveCategoryIds.includes(c.parentId || '') && !leavingArchives.has(c.id),
+    (c) => archiveIds.includes(c.parentId || '') && !leavingArchives.has(c.id),
   );
   const archiveTotal =
     alreadyArchived.length +
     archiving.filter((g) => !alreadyArchived.some((c) => c.id === g.channelId)).length;
   if (archiveTotal > maxArchives * 50) errors.push('Archive capacity exceeded');
-  const newCategories = Math.max(0, Math.ceil(archiveTotal / 50) - world.archiveCategoryIds.length);
+  const newCategories = Math.max(0, Math.ceil(archiveTotal / 50) - archiveIds.length);
   if (world.channels.length + newCategories > 500) errors.push('Server channel capacity exceeded');
   if (manifest.removeGameOptions)
     changes.push(
@@ -193,6 +222,28 @@ export async function applyPlan(
   const world = await community.snapshot();
   if (!world.complete || fingerprint(world) !== plan.fingerprint)
     throw new DomainError('incomplete');
+  if (plan.manifest.archiveCategoryIds?.length) {
+    repository.set('archiveAdoption', {
+      status: 'pending',
+      plan: digest,
+      ids: plan.manifest.archiveCategoryIds,
+    });
+    try {
+      await community.adoptArchives(plan.manifest.archiveCategoryIds, digest);
+      repository.set('archiveAdoption', {
+        status: 'completed',
+        plan: digest,
+        ids: plan.manifest.archiveCategoryIds,
+      });
+    } catch {
+      repository.set('archiveAdoption', {
+        status: 'review',
+        plan: digest,
+        ids: plan.manifest.archiveCategoryIds,
+      });
+      throw new DomainError('partial', { game: 'archives' });
+    }
+  }
   for (const planned of [...plan.games].sort(
     (a, b) => Number(a.state === 'active') - Number(b.state === 'active'),
   )) {

@@ -8,6 +8,15 @@ import { applyPlan, buildPlan, parseManifest, type ImportPlan } from './applicat
 import { DomainError } from './domain/model.js';
 import { languagesReady } from './presentation/i18n.js';
 import { Store } from './infrastructure/store.js';
+import { Rawg } from './infrastructure/rawg.js';
+import {
+  prepareInventory,
+  readInventory,
+  enrichPreparation,
+  LEGACY_ACTIVE,
+  LEGACY_STANDBY,
+} from './application/import-preparation.js';
+import { renderImportReview, renderImportSummary } from './presentation/import-review.js';
 
 function option(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -21,7 +30,64 @@ async function main(): Promise<void> {
   const command = process.argv[2];
   if (!command || command === 'help') {
     console.info(
-      '11eNexus admin: doctor | inventory --output FILE | plan --manifest FILE --output FILE | apply --plan FILE --apply | setup [--channel ID] | backup --output FILE',
+      '11eNexus admin: doctor | inventory --output FILE | prepare --inventory FILE --output FILE [--rawg] [--locale fr|en] | plan --manifest FILE --output FILE | apply --plan FILE --apply | setup [--channel ID] | backup --output FILE',
+    );
+    return;
+  }
+  if (command === 'prepare') {
+    await languagesReady;
+    const file = option('inventory') || 'data/inventory.json';
+    const target = option('output') || 'data/import-preparation.json';
+    if (!target.toLowerCase().endsWith('.json')) throw new DomainError('invalidInput');
+    const language = option('locale') || 'fr';
+    if (!['fr', 'en'].includes(language)) throw new DomainError('invalidInput');
+    const preparation = prepareInventory(
+      readInventory(JSON.parse(readFileSync(file, 'utf8'))),
+      option('active-category') || LEGACY_ACTIVE,
+      option('standby-category') || LEGACY_STANDBY,
+    );
+    if (process.argv.includes('--rawg')) {
+      const store = new Store(resolve(process.env.DATABASE_PATH || './data/nexus.sqlite'));
+      try {
+        await enrichPreparation(preparation, new Rawg(process.env.RAWG_API_KEY || '', store));
+      } finally {
+        store.close();
+      }
+    }
+    const base = target.replace(/\.json$/i, '');
+    const html = `${base}.html`;
+    const markdown = `${base}.md`;
+    if (
+      [target, html, markdown].some((path) => resolve(path) === resolve(file)) ||
+      new Set([target, html, markdown].map((p) => resolve(p))).size !== 3
+    )
+      throw new DomainError('invalidInput');
+    output(target, preparation);
+    writeFileSync(html, renderImportReview(preparation, language as 'fr' | 'en'), { mode: 0o600 });
+    writeFileSync(markdown, renderImportSummary(preparation, language as 'fr' | 'en'), {
+      mode: 0o600,
+    });
+    console.info(
+      JSON.stringify(
+        {
+          channels: preparation.channels.length,
+          exact: preparation.channels.filter(
+            (c) =>
+              c.confidence === 'exact' &&
+              !c.issues.some((i) =>
+                ['duplicate', 'event', 'family', 'permissions', 'references'].includes(i),
+              ),
+          ).length,
+          review: html,
+          summary: markdown,
+          draft: target,
+          archiveCategoryIds: preparation.archiveCategoryIds,
+          complete: preparation.complete,
+          discordChanges: false,
+        },
+        null,
+        2,
+      ),
     );
     return;
   }

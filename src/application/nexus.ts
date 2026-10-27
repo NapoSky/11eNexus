@@ -558,6 +558,8 @@ export class Nexus {
   }
   async synchronize(rotate = true): Promise<void> {
     return this.mutex.run(async () => {
+      const adoption = this.repository.get<{ status: string }>('archiveAdoption');
+      if (adoption && adoption.status !== 'completed') throw new DomainError('needsReview');
       const world = await this.community.snapshot();
       if (!world.complete) throw new DomainError('incomplete');
       // Recover resources created just before a crash, but do not recreate deleted resources.
