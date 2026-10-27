@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+node_modules
+dist
+coverage
+drafts
+data
+backups
+.agents
+.codex
+.aws
+.vscode
+*.sqlite*
+*.log

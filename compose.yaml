@@ -1,0 +1,33 @@
+services:
+  bot:
+    build:
+      context: .
+      target: runtime
+      pull: true
+    image: 11enexus:local
+    init: true
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_PATH: /data/nexus.sqlite
+      HEALTH_PATH: /data/health.json
+    volumes:
+      - nexus-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+volumes:
+  nexus-data:

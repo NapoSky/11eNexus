@@ -1,0 +1,13 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
+  "files": { "includes": ["src/**", "tests/**", "scripts/**"] },
+  "formatter": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": { "useImportType": "off", "noNonNullAssertion": "off" },
+      "complexity": { "noExcessiveCognitiveComplexity": "off" }
+    }
+  }
+}

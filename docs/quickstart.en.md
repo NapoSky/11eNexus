@@ -1,0 +1,19 @@
+# 11eNexus
+
+11eNexus keeps active game channels visible, archives inactive games without deleting their history, and lets members manage optional game notifications. The public panel is bilingual; personal menus and modals follow each member’s Discord language (French or English).
+
+1. Copy `.env.example` to `.env` and supply the existing Discord bot token, guild ID and RAWG key. Protect it with `chmod 600 .env`.
+2. Enable **Server Members Intent** in Discord’s Developer Portal. Place the bot’s role above game roles. Grant channel/role management, history, attachments/embeds, thread management, and role mention permissions. Onboarding edits also require server management. Message content intent is unnecessary.
+3. Build with `docker compose build --pull`, then run `docker compose run --rm bot node dist/cli.js doctor` for a read-only check.
+4. Import existing games using a reviewed manifest and plan. See [migration instructions](migration.md); existing channels are never adopted automatically.
+5. Explicitly install the panel with `docker compose run --rm bot node dist/cli.js setup`, then `docker compose up -d`.
+
+Members with the configured Syndiqué role can create or revive one game per rolling 24 hours. New or revived games need a first human message within 48 hours. Established games archive after 30 days, preserving the fifteen most recently active established games. Catalogue: 150 games; archives: up to three hidden categories. Voice channels and events are outside V1.
+
+Subscribing does not revive a game. Creating or reviving does not subscribe or ping anyone. Use the private game card’s **Notify players** action for a controlled role mention; arbitrary mentions inside its text are suppressed. Roles themselves are not freely mentionable.
+
+Discord wins during reconciliation. Manual channel moves, deleted resources and changed role holders are observed. Ambiguous partial operations require explicit administrator repair. No automatic channel deletion or history merging occurs.
+
+Deployment is manual: pull the private repository, make a SQLite backup, then `docker compose up -d --build`. Back up the named volume using the CLI’s online SQLite backup command. Never remove the volume with `down -v`. See the [main guide](../README.md) for restoration and administration.
+
+[RAWG Free](https://rawg.io/apidocs) allows personal noncommercial use and requires attribution links, which Nexus displays. Nexus caps its own requests at 18,000 per UTC month and has no paid fallback or Twitch connection. GitHub workflows use your account’s included Actions allowance; keep paid budgets at zero for strict free-tier use.

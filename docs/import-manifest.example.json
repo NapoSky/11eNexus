@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "removeGameOptions": false,
+  "entries": [
+    {
+      "confirmed": false,
+      "name": "Project Zomboid",
+      "channelId": "REPLACE_WITH_CHANNEL_ID",
+      "roleId": "REPLACE_WITH_ROLE_ID",
+      "state": "active",
+      "aliases": ["PZ", "Project Zombid"]
+    }
+  ]
+}

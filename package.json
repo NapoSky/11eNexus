@@ -1,0 +1,41 @@
+{
+  "name": "11enexus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "11eNexus — autonomous FR/EN Discord game community",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=24.22.1 <25"
+  },
+  "packageManager": "pnpm@12.14.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "dev": "pnpm build && pnpm start",
+    "test": "jest --runInBand",
+    "test:coverage": "jest --runInBand --coverage",
+    "lint": "biome lint src tests scripts",
+    "format": "prettier --write src tests scripts docs *.json *.cjs *.yaml *.md .github",
+    "format:check": "prettier --check src tests scripts docs *.json *.cjs *.yaml *.md .github",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "admin": "node --env-file-if-exists=.env dist/cli.js",
+    "backup": "node --env-file-if-exists=.env dist/cli.js backup",
+    "healthcheck": "node dist/healthcheck.js"
+  },
+  "dependencies": {
+    "discord.js": "14.27.0",
+    "i18next": "26.5.11",
+    "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "@swc/core": "1.16.20",
+    "@swc/jest": "0.2.39",
+    "@types/jest": "30.0.0",
+    "@types/node": "24.19.2",
+    "@biomejs/biome": "2.6.3",
+    "jest": "30.5.2",
+    "prettier": "3.9.10",
+    "typescript": "7.0.2"
+  }
+}

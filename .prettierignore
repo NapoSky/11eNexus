@@ -1,0 +1,6 @@
+drafts
+pnpm-lock.yaml
+dist
+coverage
+node_modules
+*.png

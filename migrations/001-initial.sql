@@ -1,0 +1,13 @@
+CREATE TABLE games (id TEXT PRIMARY KEY, rawg_id INTEGER UNIQUE, data TEXT NOT NULL);
+CREATE UNIQUE INDEX game_channel ON games(json_extract(data,'$.channelId'));
+CREATE UNIQUE INDEX game_role ON games(json_extract(data,'$.roleId'));
+CREATE TABLE subscriptions (game_id TEXT NOT NULL REFERENCES games(id), user_id TEXT NOT NULL, PRIMARY KEY (game_id,user_id));
+CREATE TABLE cooldowns (user_id TEXT PRIMARY KEY, at INTEGER NOT NULL);
+CREATE TABLE operations (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE proposals (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE assets (id TEXT PRIMARY KEY, bytes BLOB NOT NULL, mime TEXT NOT NULL, source TEXT NOT NULL, sha256 TEXT NOT NULL);
+CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL, expires_at INTEGER NOT NULL);
+CREATE INDEX sessions_expiry ON sessions(expires_at);
+CREATE TABLE audit (id INTEGER PRIMARY KEY, action TEXT NOT NULL, actor_id TEXT, target TEXT NOT NULL, at INTEGER NOT NULL);
+CREATE TABLE lease (id INTEGER PRIMARY KEY CHECK(id=1), owner TEXT NOT NULL, expires_at INTEGER NOT NULL);
