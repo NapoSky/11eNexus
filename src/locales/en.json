@@ -108,12 +108,12 @@
   "importReviewOnboarding": "Remove imported game references from onboarding after importing subscriptions",
   "importReviewExportHint": "Download the manifest, then use the plan command. Permissions and role hierarchy are rechecked on Discord before applying anything. Choose RAWG references explicitly; no same-name result is selected automatically.",
   "importReviewDownload": "Download the manifest",
-  "importReviewMissing": "A name or existing role is missing.",
+  "importReviewMissing": "A name or role choice is missing.",
   "importReviewInvalidRawg": "The RAWG reference is invalid or used twice.",
   "importReviewEmpty": "Select at least one channel to export.",
   "importReviewSelected": "{{count}} game(s) selected. The manifest is ready for verification with the plan command.",
   "importReviewNoReference": "No RAWG reference yet",
-  "importIssueunmatched": "No role identified with enough certainty.",
+  "importIssueunmatched": "No role identified: choose an existing role or let Nexus create one for this game.",
   "importIssuefuzzy": "Suggested match: check the game name and role.",
   "importIssueduplicate": "Several channels share the proposed role: choose the canonical channel or separate the games.",
   "importIssueevent": "Possible campaign or temporary space: preserved, review before inclusion.",
@@ -121,5 +121,10 @@
   "importIssuepermissions": "This role has global permissions; the plan will reject its import in this state.",
   "importIssuehierarchy": "The role is above the bot: move the bot up before applying.",
   "importIssuereferences": "The role is used in channel permissions; review those access rules.",
-  "importIssuecatalogueUnavailable": "RAWG search failed; other matches remain available."
+  "importIssuecatalogueUnavailable": "RAWG search failed; other matches remain available.",
+  "importReviewCreateRole": "Create a role for this game",
+  "importReviewNewRoleIcon": "New role icon",
+  "importReviewNewRoleHint": "The role is created when applying the plan, with no global permissions or initial subscribers. Choose a RAWG game or reuse a parent game role’s icon below.",
+  "importReviewRawgIcon": "Use the selected RAWG game image",
+  "importReviewIconRequired": "To create the role, choose a RAWG game or a parent role with an icon."
 }

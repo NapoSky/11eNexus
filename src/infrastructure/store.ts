@@ -170,11 +170,16 @@ export class Store implements Repository {
       this.db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(now);
       this.db
         .prepare(
+          "DELETE FROM metadata WHERE key LIKE 'import-icon:%' AND json_extract(value,'$.expiresAt')<=?",
+        )
+        .run(now);
+      this.db
+        .prepare(
           "DELETE FROM metadata WHERE key LIKE 'rawg:%' AND json_extract(value,'$.expires')<=?",
         )
         .run(now);
       this.db.exec(
-        "DELETE FROM assets WHERE id NOT IN (SELECT json_extract(data,'$.assetId') FROM games WHERE json_extract(data,'$.assetId') IS NOT NULL) AND id NOT IN (SELECT json_extract(data,'$.assetId') FROM sessions WHERE json_extract(data,'$.assetId') IS NOT NULL)",
+        "DELETE FROM assets WHERE id NOT IN (SELECT json_extract(data,'$.assetId') FROM games WHERE json_extract(data,'$.assetId') IS NOT NULL) AND id NOT IN (SELECT json_extract(data,'$.assetId') FROM sessions WHERE json_extract(data,'$.assetId') IS NOT NULL) AND id NOT IN (SELECT json_extract(value,'$.assetId') FROM metadata WHERE key LIKE 'import-icon:%' AND json_extract(value,'$.assetId') IS NOT NULL)",
       );
     });
   }

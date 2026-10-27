@@ -573,7 +573,9 @@ export class Nexus {
           if (!game.channelId && channels.length === 1) game.channelId = channels[0]!.id;
         }
         if (
-          (op.kind === 'create' || op.kind === 'activate') &&
+          (op.kind === 'create' ||
+            op.kind === 'activate' ||
+            (op.kind === 'import' && op.data.createRole === true)) &&
           !world.roles.some((r) => r.id === game.roleId)
         ) {
           const baseline = Array.isArray(op.data.previousRoleIds) ? op.data.previousRoleIds : [];

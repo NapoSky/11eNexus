@@ -103,3 +103,12 @@ test('maintenance removes expired previews and cache while preserving icons of g
   expect(store.asset('orphan')).toBeNull();
   expect(store.get('rawg:test')).toBeUndefined();
 });
+test('icons reserved by a reviewed import survive cleanup until their reservation expires', () => {
+  store.saveAsset(asset);
+  store.set('import-icon:game', { assetId: asset.id, expiresAt: Date.now() + 60000 });
+  store.maintain(Date.now());
+  expect(store.asset(asset.id)).not.toBeNull();
+  store.maintain(Date.now() + 60001);
+  expect(store.asset(asset.id)).toBeNull();
+  expect(store.get('import-icon:game')).toBeUndefined();
+});

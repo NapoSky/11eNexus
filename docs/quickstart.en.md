@@ -10,6 +10,8 @@
 
 After generating the inventory, run `pnpm admin prepare --inventory data/inventory.json --output data/import-preparation.json --rawg --locale en`. Open `data/import-preparation.html`, review the proposed matches, and download the confirmed manifest. No JSON needs to be written by hand. Preparation only examines the two specified game categories. The standby category keeps its ID and becomes the first hidden archive; up to two more archives are created as needed. This preparation does not modify Discord. Stop any previous rotation automation before applying the import.
 
+Notification roles are listed alphabetically. If a role is missing, choose **Create a role for this game**, with a RAWG image or an existing parent role icon. The plan verifies the image and capacity before any Discord changes. Applying it creates the role with zero global permissions and no initial subscribers, preserving the existing channel and history.
+
 Members with the configured Syndiqué role can create or revive one game per rolling 24 hours. New or revived games need a first human message within 48 hours. Established games archive after 30 days, preserving the fifteen most recently active established games. Catalogue: 150 games; archives: up to three hidden categories. Voice channels and events are outside V1.
 
 Subscribing does not revive a game. Creating or reviving does not subscribe or ping anyone. Use the private game card’s **Notify players** action for a controlled role mention; arbitrary mentions inside its text are suppressed. Roles themselves are not freely mentionable.

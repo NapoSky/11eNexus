@@ -51,6 +51,8 @@ L’import conserve les IDs des salons et rôles et importe leurs détenteurs ac
 
 Après l’inventaire, `pnpm admin prepare --inventory data/inventory.json --output data/import-preparation.json --rawg` génère une page locale **`data/import-preparation.html`** : sélectionner les correspondances proposées et télécharger le manifeste, sans écrire de JSON à la main. Seules les deux catégories de jeux configurées pour cette préparation sont ciblées. L’ancienne catégorie « Les jeux en pause » devient la première archive cachée en conservant son ID ; les deux suivantes sont créées au besoin.
 
+Les rôles de notification sont proposés dans l’ordre alphabétique. Lorsqu’il manque un rôle, choisir **Créer un rôle pour ce jeu** avec une image RAWG ou l’icône d’un rôle parent : le plan vérifie le visuel et la capacité, puis l’application crée seulement le rôle manquant, sans recréer le salon ni abonner automatiquement les membres.
+
 Préparer puis relire le plan selon [le guide de migration](docs/migration.md). L’application exige un plan cohérent avec l’état Discord courant, des rôles sous le bot et **sans permission globale**, et un `--apply` explicite. Un rôle donnant accès à autre chose doit être dissocié manuellement avant import. Les doublons ne sont jamais fusionnés ou supprimés automatiquement.
 
 ## Déploiement et maintenance

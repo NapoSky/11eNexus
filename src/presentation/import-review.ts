@@ -34,6 +34,8 @@ function reviewClient(): void {
       const original = preparation.channels.find((c) => c.channelId === row.dataset.id)!;
       const name = value(row, 'name').trim();
       const roleId = value(row, 'role');
+      const createRole = roleId === '__create__';
+      const iconRoleId = createRole ? value(row, 'icon-role') : '';
       const rawg = value(row, 'rawg').trim();
       const rawgId = Number(rawg);
       const canonical = name
@@ -42,19 +44,30 @@ function reviewClient(): void {
         .toLowerCase()
         .replace(/[^\p{L}\p{N}]+/gu, ' ')
         .trim();
-      if (!name || name.length > 100 || !preparation.roles.some((r) => r.id === roleId))
+      if (
+        !name ||
+        name.length > 100 ||
+        (!createRole && !preparation.roles.some((r) => r.id === roleId))
+      )
         errors.push(`${original.channelName}: ${labels.missing}`);
-      if (roles.has(roleId) || names.has(canonical)) errors.push(`${name}: ${labels.duplicate}`);
-      roles.add(roleId);
+      if ((!createRole && roles.has(roleId)) || names.has(canonical))
+        errors.push(`${name}: ${labels.duplicate}`);
+      if (!createRole) roles.add(roleId);
       names.add(canonical);
       if (rawg && (!Number.isSafeInteger(rawgId) || rawgId < 1 || rawgIds.has(rawgId)))
         errors.push(`${name}: ${labels.invalidRawg}`);
       if (rawg) rawgIds.add(rawgId);
+      if (
+        createRole &&
+        ((!rawg && !iconRoleId) ||
+          (iconRoleId && !preparation.roles.some((r) => r.id === iconRoleId)))
+      )
+        errors.push(`${name}: ${labels.iconRequired}`);
       entries.push({
         confirmed: true,
         name,
         channelId: original.channelId,
-        roleId,
+        ...(createRole ? { createRole: true, ...(iconRoleId ? { iconRoleId } : {}) } : { roleId }),
         state: value(row, 'state'),
         aliases: original.aliases,
         ...(rawg ? { rawgId } : {}),
@@ -80,8 +93,18 @@ function reviewClient(): void {
           (row.querySelector('[data-field="name"]') as HTMLInputElement).value = candidate.name;
       }
       const role = preparation.roles.find((r) => r.id === value(row, 'role'));
+      const original = preparation.channels.find((c) => c.channelId === row.dataset.id)!;
+      for (const hint of row.querySelectorAll<HTMLElement>('[data-role-issue]'))
+        hint.hidden = value(row, 'role') !== original.roleId;
+      const source = row.querySelector('[data-new-role]') as HTMLElement | null;
+      if (source) source.hidden = value(row, 'role') !== '__create__';
       const count = row.querySelector('[data-subscribers]');
-      if (count) count.textContent = role ? String(role.subscribers) : '—';
+      if (count)
+        count.textContent = role
+          ? String(role.subscribers)
+          : value(row, 'role') === '__create__'
+            ? '0'
+            : '—';
       update();
     });
   document.getElementById('exact')!.addEventListener('click', () => {
@@ -139,22 +162,35 @@ function reviewClient(): void {
   });
   update();
 }
-function options(row: PreparedChannel, p: ImportPreparation): string {
-  const order = [...row.candidates.map((c) => c.roleId), ...p.roles.map((r) => r.id)];
-  return `<option value="">—</option>${[...new Set(order)]
-    .map((id) => {
-      const role = p.roles.find((r) => r.id === id)!;
-      return `<option value="${escapeHtml(id)}"${id === row.roleId ? ' selected' : ''}>${escapeHtml(role.name)} (${role.subscribers})</option>`;
+function sortedRoles(p: ImportPreparation, language: Locale) {
+  const collator = new Intl.Collator(language, {
+    sensitivity: 'base',
+    numeric: true,
+    ignorePunctuation: true,
+  });
+  return [...p.roles].sort((a, b) => collator.compare(a.name, b.name) || a.id.localeCompare(b.id));
+}
+function options(row: PreparedChannel, p: ImportPreparation, language: Locale): string {
+  const t = translator(language);
+  return `<option value="">—</option><option value="__create__"${row.roleId ? '' : ' selected'}>${escapeHtml(t('importReviewCreateRole'))}</option>${sortedRoles(
+    p,
+    language,
+  )
+    .map((role) => {
+      return `<option value="${escapeHtml(role.id)}"${role.id === row.roleId ? ' selected' : ''}>${escapeHtml(role.name)} (${role.subscribers})</option>`;
     })
     .join('')}`;
 }
 export function renderImportReview(p: ImportPreparation, language: Locale = 'fr'): string {
   const t = translator(language);
   const e = (key: string) => escapeHtml(t(`importReview${key}`));
+  const iconOptions = `<option value="">${e('RawgIcon')}</option>${sortedRoles(p, language)
+    .map((role) => `<option value="${escapeHtml(role.id)}">${escapeHtml(role.name)}</option>`)
+    .join('')}`;
   const rows = p.channels
     .map(
       (row) =>
-        `<tr data-id="${escapeHtml(row.channelId)}"><td><input type="checkbox" data-field="selected" aria-label="${e('Select')} ${escapeHtml(row.channelName)}"></td><td><input data-field="name" maxlength="100" value="${escapeHtml(row.name)}" aria-label="${e('Name')}"><small>${escapeHtml(row.channelName)}<br>${escapeHtml(row.channelId)} · ${escapeHtml(row.type === 15 || row.type === 16 ? 'Forum' : 'Text')}</small></td><td><select data-field="role" aria-label="${e('Role')}">${options(row, p)}</select><small>${e('Subscribers')}: <span data-subscribers>${p.roles.find((r) => r.id === row.roleId)?.subscribers ?? '—'}</span></small></td><td><select data-field="state" aria-label="${e('State')}"><option value="active"${row.state === 'active' ? ' selected' : ''}>${escapeHtml(t('active'))}</option><option value="archived"${row.state === 'archived' ? ' selected' : ''}>${escapeHtml(t('archived'))}</option></select></td><td><select data-field="rawg" aria-label="RAWG"><option value="">${e('NoReference')}</option>${row.rawgCandidates.map((c) => `<option value="${c.id}"${c.id === row.rawgId ? ' selected' : ''}>${escapeHtml(c.name)} · ${escapeHtml(c.released || '')}</option>`).join('')}</select><details><summary>${e('Candidates')} (${row.rawgCandidates.length})</summary>${row.rawgCandidates.map((c) => `<p><a href="https://rawg.io/games/${c.id}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.name)}</a> · ${escapeHtml(c.released || '')} · ${escapeHtml(c.studio)}<br>RAWG ID: ${c.id}</p>`).join('')}</details></td><td>${row.issues.map((issue) => `<p class="issue ${['duplicate', 'event', 'family', 'permissions', 'unmatched'].includes(issue) ? 'important' : ''}">${escapeHtml(t(`importIssue${issue}`))}</p>`).join('') || e('Exact')}</td></tr>`,
+        `<tr data-id="${escapeHtml(row.channelId)}"><td><input type="checkbox" data-field="selected" aria-label="${e('Select')} ${escapeHtml(row.channelName)}"></td><td><input data-field="name" maxlength="100" value="${escapeHtml(row.name)}" aria-label="${e('Name')}"><small>${escapeHtml(row.channelName)}<br>${escapeHtml(row.channelId)} · ${escapeHtml(row.type === 15 || row.type === 16 ? 'Forum' : 'Text')}</small></td><td><select data-field="role" aria-label="${e('Role')}">${options(row, p, language)}</select><small>${e('Subscribers')}: <span data-subscribers>${p.roles.find((r) => r.id === row.roleId)?.subscribers ?? 0}</span></small><details data-new-role${row.roleId ? ' hidden' : ' open'}><summary>${e('NewRoleIcon')}</summary><p>${e('NewRoleHint')}</p><select data-field="icon-role" aria-label="${e('NewRoleIcon')}">${iconOptions}</select></details></td><td><select data-field="state" aria-label="${e('State')}"><option value="active"${row.state === 'active' ? ' selected' : ''}>${escapeHtml(t('active'))}</option><option value="archived"${row.state === 'archived' ? ' selected' : ''}>${escapeHtml(t('archived'))}</option></select></td><td><select data-field="rawg" aria-label="RAWG"><option value="">${e('NoReference')}</option>${row.rawgCandidates.map((c) => `<option value="${c.id}"${c.id === row.rawgId ? ' selected' : ''}>${escapeHtml(c.name)} · ${escapeHtml(c.released || '')}</option>`).join('')}</select><details><summary>${e('Candidates')} (${row.rawgCandidates.length})</summary>${row.rawgCandidates.map((c) => `<p><a href="https://rawg.io/games/${c.id}" target="_blank" rel="noopener noreferrer">${escapeHtml(c.name)}</a> · ${escapeHtml(c.released || '')} · ${escapeHtml(c.studio)}<br>RAWG ID: ${c.id}</p>`).join('')}</details></td><td>${row.issues.map((issue) => `<p${['fuzzy', 'hierarchy', 'permissions', 'references', 'duplicate'].includes(issue) ? ' data-role-issue' : ''} class="issue ${['duplicate', 'event', 'family', 'permissions', 'unmatched'].includes(issue) ? 'important' : ''}">${escapeHtml(t(`importIssue${issue}`))}</p>`).join('') || e('Exact')}</td></tr>`,
     )
     .join('');
   const labels = {
@@ -164,6 +200,7 @@ export function renderImportReview(p: ImportPreparation, language: Locale = 'fr'
     incomplete: t('incomplete'),
     empty: t('importReviewEmpty'),
     selected: t('importReviewSelected', { count: '{{count}}' }),
+    iconRequired: t('importReviewIconRequired'),
   };
   return `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>${e('Title')}</title><style>body{font:16px system-ui,sans-serif;color:#e6ece9;background:#111b18;margin:0;padding:24px}main{max-width:1600px;margin:auto}h1{margin:0}p{line-height:1.5}header,.toolbar,footer{background:#1c2b24;padding:20px;border-radius:12px;margin-bottom:20px}button,input,select{font:inherit;border-radius:6px;padding:9px;border:1px solid #597564;color:#e6ece9;background:#24382e}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#426c51}.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center}table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid #385041}th{background:#1c2b24;position:sticky;top:0}input[data-field=name],select{width:100%;box-sizing:border-box}input[data-field=rawg]{width:110px}small{display:block;color:#b1c5b9;margin-top:8px;overflow-wrap:anywhere}.issue{font-size:13px;margin:0 0 8px;color:#c6d6cd}.important{color:#ffd59b}a{color:#a9d6bc}footer{margin-top:20px}#status{white-space:pre-line}.table-scroll{overflow:auto}td:nth-child(2){min-width:220px}td:nth-child(3){min-width:240px}td:last-child{min-width:200px}label{display:block;margin:12px 0}</style></head><body><main><header><h1>11eNexus · ${e('Title')}</h1><p>${e('Intro')}</p><p>${e('Scope')}<br><strong>${escapeHtml(p.activeCategoryId)}</strong> → ${escapeHtml(t('active'))}<br><strong>${escapeHtml(p.standbyCategoryId)}</strong> → ${e('FirstArchive')}</p><p>${e('ArchiveExplanation')}</p><p>${escapeHtml(t('importReviewCounts', { channels: p.channels.length, ignored: p.ignoredNonTextual }))}</p></header><div class="toolbar"><button id="exact">${e('ApproveExact')}</button><button id="clear">${e('Clear')}</button><input id="search" type="search" placeholder="${e('Search')}" aria-label="${e('Search')}"></div><div class="table-scroll"><table><thead><tr>${['Select', 'Name', 'Role', 'State', 'Rawg', 'Issues'].map((key) => `<th>${e(key)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div><footer><label><input id="onboarding" type="checkbox" checked> ${e('Onboarding')}</label><p>${e('ExportHint')}</p><p id="status" role="status"></p><button id="download" class="primary">${e('Download')}</button></footer></main><script id="review-data" type="application/json">${json({ preparation: p, labels })}</script><script>(${reviewClient.toString()})();</script></body></html>`;
 }

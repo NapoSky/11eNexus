@@ -4,7 +4,13 @@ import { dirname, resolve } from 'node:path';
 import { once } from 'node:events';
 import { Events } from 'discord.js';
 import { bootstrap } from './bootstrap.js';
-import { applyPlan, buildPlan, parseManifest, type ImportPlan } from './application/migration.js';
+import {
+  applyPlan,
+  buildPlan,
+  parseManifest,
+  prepareRoleIcons,
+  type ImportPlan,
+} from './application/migration.js';
 import { DomainError } from './domain/model.js';
 import { languagesReady } from './presentation/i18n.js';
 import { Store } from './infrastructure/store.js';
@@ -163,13 +169,20 @@ async function main(): Promise<void> {
       const target = option('output');
       if (!file || !target) throw new DomainError('invalidInput');
       const manifest = parseManifest(JSON.parse(readFileSync(file, 'utf8')));
-      const plan = buildPlan(
+      const initial = buildPlan(
         manifest,
         await app.gateway.snapshot(),
         app.repository,
         app.settings.maxGames,
         app.settings.activeCategoryId,
         app.settings.maxArchives,
+        app.settings.roleReserve,
+      );
+      const plan = await prepareRoleIcons(
+        initial,
+        app.repository,
+        app.gateway,
+        app.nexus.catalogue,
       );
       output(target, plan);
       console.info(JSON.stringify({ changes: plan.changes, errors: plan.errors }, null, 2));

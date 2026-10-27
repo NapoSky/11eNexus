@@ -174,6 +174,7 @@ test('the local review exports a confirmed manifest only after selection, with a
     selected: { value: '', checked: false },
     name: { value: p.channels[0]!.name },
     role: { value: rid },
+    'icon-role': { value: '' },
     rawg: { value: '' },
     state: { value: 'active' },
   };
@@ -182,13 +183,16 @@ test('the local review exports a confirmed manifest only after selection, with a
     dataset: { id: cid },
     textContent: 'Project Zomboid Other role not selected',
     hidden: false,
+    querySelectorAll: () => [],
     addEventListener: (_event: string, handler: typeof change) => {
       change = handler;
     },
     querySelector: (selector: string) =>
       selector === '[data-subscribers]'
         ? { textContent: '1' }
-        : fields[selector.match(/data-field="([^"]+)"/)![1]!],
+        : selector === '[data-new-role]'
+          ? { hidden: true }
+          : fields[selector.match(/data-field="([^"]+)"/)![1]!],
   };
   const elements: Record<
     string,
@@ -249,4 +253,46 @@ test('the local review exports a confirmed manifest only after selection, with a
     }),
   ]);
   expect(manifest.removeGameOptions).toBe(true);
+  fields.role!.value = '__create__';
+  fields.rawg!.value = '';
+  change({ target: fields.role });
+  expect(elements.download!.disabled).toBe(true);
+  fields['icon-role']!.value = rid;
+  change({ target: fields['icon-role'] });
+  listeners.download!();
+  const parentManifest = JSON.parse(await blob!.text());
+  expect(parentManifest.entries[0]).toMatchObject({ createRole: true, iconRoleId: rid });
+  expect(parentManifest.entries[0].roleId).toBeUndefined();
+  fields['icon-role']!.value = '';
+  fields.rawg!.value = '123';
+  change({ target: fields.rawg });
+  listeners.download!();
+  const rawgManifest = JSON.parse(await blob!.text());
+  expect(rawgManifest.entries[0]).toMatchObject({ createRole: true, rawgId: 123 });
+  expect(rawgManifest.entries[0].iconRoleId).toBeUndefined();
 });
+test.each(['fr', 'en'] as const)(
+  'notification and parent icon roles are alphabetical in %s, even when a candidate is suggested',
+  (language) => {
+    const p = prepareInventory(world());
+    p.roles.push(
+      { ...p.roles[0]!, id: '100000000000000011', name: 'Zelda' },
+      { ...p.roles[0]!, id: '100000000000000012', name: 'éco' },
+      { ...p.roles[0]!, id: '100000000000000013', name: 'Alpha' },
+    );
+    const html = renderImportReview(p, language);
+    for (const field of ['role', 'icon-role']) {
+      const select = html.match(
+        new RegExp(`<select data-field="${field}"[^>]*>([\\s\\S]*?)</select>`),
+      )![1]!;
+      const values = Array.from(select.matchAll(/<option value="(\d+)"/g), (m) => m[1]);
+      expect(values).toEqual([
+        '100000000000000013',
+        '100000000000000012',
+        rid,
+        '100000000000000011',
+      ]);
+    }
+    expect(html).toContain(`value="${rid}" selected`);
+  },
+);

@@ -2,9 +2,10 @@ import {
   applyPlan,
   buildPlan,
   parseManifest,
+  prepareRoleIcons,
   type Manifest,
 } from '../src/application/migration.js';
-import { activeId, fixture, game, member } from './helpers.js';
+import { activeId, fixture, game, member, asset } from './helpers.js';
 
 let f: ReturnType<typeof fixture>;
 const manifest: Manifest = {
@@ -158,4 +159,163 @@ test('archive reuse rejects the active category, excess categories, and nontextu
   expect(() => parseManifest({ ...manifest, archiveCategoryIds: [id, id] })).toThrow(
     'invalidInput',
   );
+});
+function withCreation(parent?: string): Manifest {
+  const entry = manifest.entries[0]!;
+  return {
+    ...manifest,
+    entries: [
+      {
+        confirmed: true,
+        name: entry.name,
+        channelId: entry.channelId,
+        state: entry.state,
+        createRole: true,
+        ...(parent ? { iconRoleId: parent } : { rawgId: 123 }),
+      },
+    ],
+  };
+}
+test('a missing notification role is created on application, keeping the existing channel and no initial subscribers', async () => {
+  f.community.world.roles = [];
+  const m = parseManifest(withCreation());
+  const initial = buildPlan(m, f.community.world, f.repository, 150, activeId);
+  expect(initial.errors).toEqual([]);
+  expect(initial.roleCreations).toHaveLength(1);
+  expect(f.community.createRole).not.toHaveBeenCalled();
+  const plan = await prepareRoleIcons(initial, f.repository, f.community, f.catalogue);
+  expect(plan.errors).toEqual([]);
+  expect(plan.games[0]?.assetId).toBe(asset.id);
+  await applyPlan(plan, f.repository, f.community);
+  const g = f.repository.games()[0]!;
+  expect(g).toMatchObject({
+    channelId: m.entries[0]?.channelId,
+    state: 'active',
+    roleState: 'present',
+    canRecycle: true,
+  });
+  expect(g.roleId).toBeTruthy();
+  expect(f.repository.subscribers(g.id)).toEqual([]);
+  expect(f.community.createChannel).not.toHaveBeenCalled();
+  expect(f.community.setSubscription).not.toHaveBeenCalled();
+  expect(f.community.createRole).toHaveBeenCalledTimes(1);
+  expect(f.community.removeGameOptions).toHaveBeenCalledWith([g.roleId], [g.channelId]);
+  await applyPlan(plan, f.repository, f.community);
+  expect(f.community.createRole).toHaveBeenCalledTimes(1);
+});
+test('a new role can reuse a parent icon without copying its subscribers', async () => {
+  const parent = manifest.entries[0]!.roleId!;
+  const initial = buildPlan(
+    parseManifest(withCreation(parent)),
+    f.community.world,
+    f.repository,
+    150,
+    activeId,
+  );
+  const plan = await prepareRoleIcons(initial, f.repository, f.community, f.catalogue);
+  expect(plan.errors).toEqual([]);
+  expect(f.catalogue.get).not.toHaveBeenCalled();
+  expect(f.community.importRoleAsset).toHaveBeenCalledWith(parent);
+  await applyPlan(plan, f.repository, f.community);
+  expect(f.repository.subscribers(f.repository.games()[0]!.id)).toEqual([]);
+  expect(f.community.world.roles.find((r) => r.id === parent)?.members).toEqual([member.id]);
+});
+test('a missing image prevents all Discord mutations, including archive adoption', async () => {
+  f.catalogue.image = async () => null;
+  const m = { ...withCreation(), archiveCategoryIds: [f.community.world.archiveCategoryIds[0]!] };
+  const initial = buildPlan(m, f.community.world, f.repository, 150, activeId);
+  await expect(applyPlan(initial, f.repository, f.community)).rejects.toMatchObject({
+    code: 'invalidImage',
+  });
+  const plan = await prepareRoleIcons(initial, f.repository, f.community, f.catalogue);
+  expect(plan.errors.join('\n')).toContain('icon unavailable');
+  await expect(applyPlan(plan, f.repository, f.community)).rejects.toMatchObject({
+    code: 'invalidInput',
+  });
+  expect(f.community.adoptArchives).not.toHaveBeenCalled();
+  expect(f.community.createRole).not.toHaveBeenCalled();
+  expect(f.repository.games()).toHaveLength(0);
+});
+test('new role capacity and icon support are checked before fetching images or creating anything', async () => {
+  f.community.world.roleIcons = false;
+  let initial = buildPlan(withCreation(), f.community.world, f.repository, 150, activeId);
+  expect(initial.errors.join('\n')).toContain('icons');
+  await prepareRoleIcons(initial, f.repository, f.community, f.catalogue);
+  expect(f.catalogue.get).not.toHaveBeenCalled();
+  f.community.world.roleIcons = true;
+  while (f.community.world.roles.length < 245)
+    f.community.world.roles.push({
+      ...f.community.world.roles[0]!,
+      id: `filler-${f.community.world.roles.length}`,
+    });
+  initial = buildPlan(withCreation(), f.community.world, f.repository, 150, activeId);
+  expect(initial.errors.join('\n')).toContain('role capacity');
+});
+test('creation manifests require exactly one role mode and a verified icon source', () => {
+  expect(() => parseManifest(withCreation())).not.toThrow();
+  const base = withCreation().entries[0]!;
+  for (const entry of [
+    { ...base, roleId: manifest.entries[0]!.roleId },
+    { ...base, rawgId: undefined },
+    { ...base, createRole: false },
+    { ...base, iconRoleId: 'invalid' },
+    { ...manifest.entries[0], iconRoleId: manifest.entries[0]!.roleId },
+  ])
+    expect(() => parseManifest({ ...manifest, entries: [entry] })).toThrow('invalidInput');
+});
+test('an interrupted role creation is recovered for review and explicitly reattached without duplication', async () => {
+  const roleId = '100000000000000150';
+  const initial = buildPlan(withCreation(), f.community.world, f.repository, 150, activeId);
+  const plan = await prepareRoleIcons(initial, f.repository, f.community, f.catalogue);
+  f.community.createRole.mockImplementationOnce(async (g) => {
+    f.community.world.roles.push({
+      id: roleId,
+      name: g.name,
+      members: [],
+      managed: false,
+      permissions: '0',
+      mentionable: false,
+      references: [],
+      editable: true,
+    });
+    throw new Error('timeout after create');
+  });
+  await expect(applyPlan(plan, f.repository, f.community)).rejects.toMatchObject({
+    code: 'partial',
+  });
+  await f.nexus.synchronize(false);
+  const g = f.repository.games()[0]!;
+  expect(g).toMatchObject({ blocked: true, roleId });
+  expect(
+    buildPlan(withCreation(), f.community.world, f.repository, 150, activeId).errors.join('\n'),
+  ).toContain('previous role creation');
+  const repaired = buildPlan(
+    { ...manifest, entries: [{ ...manifest.entries[0]!, roleId }] },
+    f.community.world,
+    f.repository,
+    150,
+    activeId,
+  );
+  expect(repaired.errors).toEqual([]);
+  await applyPlan(repaired, f.repository, f.community);
+  await f.nexus.synchronize(false);
+  expect(f.repository.game(g.id)).toMatchObject({ blocked: false, roleId, state: 'active' });
+  expect(f.repository.operations().every((o) => o.status === 'completed')).toBe(true);
+  expect(f.community.createRole).toHaveBeenCalledTimes(1);
+});
+test('retrying a role-creation failure with unchanged Discord still requires review', async () => {
+  const plan = await prepareRoleIcons(
+    buildPlan(withCreation(), f.community.world, f.repository, 150, activeId),
+    f.repository,
+    f.community,
+    f.catalogue,
+  );
+  f.community.createRole.mockRejectedValueOnce(new Error('network'));
+  await expect(applyPlan(plan, f.repository, f.community)).rejects.toMatchObject({
+    code: 'partial',
+  });
+  await expect(applyPlan(plan, f.repository, f.community)).rejects.toMatchObject({
+    code: 'needsReview',
+  });
+  expect(f.community.createRole).toHaveBeenCalledTimes(1);
 });
