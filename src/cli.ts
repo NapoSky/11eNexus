@@ -25,6 +25,7 @@ import {
 import { renderImportReview, renderImportSummary } from './presentation/import-review.js';
 import { adminDiagnostic } from './infrastructure/admin-diagnostics.js';
 import { enableRoleMentions } from './application/role-mentions.js';
+import { logger } from './infrastructure/logger.js';
 
 let stage = 'initialization';
 
@@ -129,7 +130,7 @@ async function main(): Promise<void> {
       if (!leased) throw new DomainError('inProgress');
       heartbeat = setInterval(() => {
         if (!app.repository.acquireLease(owner, Date.now())) {
-          console.error('Database lease lost; stopping administrative process.');
+          logger.error({ event: 'admin_lease_lost' });
           process.exit(1);
         }
       }, 10000);
@@ -165,6 +166,11 @@ async function main(): Promise<void> {
               (r) => !r.managed && !r.editable && r.permissions === '0',
             ).length,
             importedGames: app.repository.games().length,
+            catalogue: {
+              active: app.repository.games().filter((g) => g.state === 'active').length,
+              archived: app.repository.games().filter((g) => g.state === 'archived').length,
+              unavailable: app.repository.games().filter((g) => g.state === 'unavailable').length,
+            },
             uneditableImportedRoles: app.repository
               .games()
               .filter((g) => !world.roles.find((r) => r.id === g.roleId)?.editable)
@@ -247,12 +253,11 @@ async function main(): Promise<void> {
   }
 }
 main().catch((error) => {
-  console.error(
-    JSON.stringify({
-      event: 'admin_command_failed',
-      code: error instanceof DomainError ? error.code : 'configuration_or_discord_error',
-      ...adminDiagnostic(error, stage),
-    }),
-  );
+  logger.error({
+    event: 'admin_command_failed',
+    code: error instanceof DomainError ? error.code : 'configuration_or_discord_error',
+    ...adminDiagnostic(error, stage),
+    err: error,
+  });
   process.exitCode = 1;
 });

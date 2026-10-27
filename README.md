@@ -7,6 +7,7 @@ Node 24 · TypeScript 7 · discord.js · i18next · SQLite intégré à Node · 
 ## Fonctionnement
 
 - Un panneau public bilingue, en lecture seule pour les membres. Les boutons ouvrent un parcours personnel dans la langue de Discord : catalogue, recherche, création, relance, abonnements et propositions.
+- Le bouton « Jeux » ouvre les jeux actifs ; « Archives » ouvre directement les jeux archivés, même si leurs salons sont cachés. Le catalogue personnel affiche le total et les comptes actifs/archivés ; le filtre permet aussi de tout afficher.
 - Accès réservé aux Syndiqués (`948308796416098395`) et aux admins configurés. Publication et configuration du panneau réservées aux admins. Les membres créent les jeux eux-mêmes après sélection et confirmation d’une fiche RAWG.
 - Un jeu créé ou relancé remonte dans « Jeux du moment ». Aucun abonnement ni ping automatique. Un premier message humain dans les 48 heures confirme son activité ; sinon il retourne aux archives.
 - Ensuite : archivage après 30 jours sans message humain. Les quinze jeux établis les plus récemment actifs forment le socle protégé. Une relance provisoire ne chasse pas un jeu de ce socle. Les messages dans les fils et forums comptent aussi ; bots, webhooks et messages système sont ignorés. Les réactions ne comptent pas.
@@ -87,6 +88,12 @@ Après une panne, le bot observe Discord avant toute rotation. Les changements m
 `/nexus-admin status`, `proposals`, `approve`, `clarify`, `reject`, `reconcile`, `block`, `unblock`, `edit`, `retire` et `repair` assurent l’exploitation. `edit` corrige le titre et les alias du catalogue, sans renommer les ressources Discord. `retire` retire un jeu archivé ou indisponible du catalogue en conservant ses ressources ; cela ne libère pas de place dans les catégories Discord. Libérer des emplacements nécessite une décision admin sur les ressources, leur export ou leur déplacement.
 
 Le contrôle de santé échoue si Discord n’est pas prêt ou si les réconciliations n’aboutissent plus. Docker marque alors le service `unhealthy` ; Compose ne redémarre pas automatiquement un processus seulement parce qu’il est `unhealthy`. Examiner les logs et les permissions.
+
+Les logs de service utilisent Pino sur stderr, avec date, niveau, évènement et diagnostics d’erreur. `LOG_FORMAT=json` est le format structuré par défaut ; `LOG_FORMAT=pretty` donne un affichage lisible dans `docker compose logs`. `LOG_LEVEL=debug` ajoute les délais d’acquittement des interactions. Les jetons, corps de requête, textes saisis et messages bruts d’exception ne sont pas journalisés. Les résultats des commandes administratives restent disponibles sur stdout.
+
+Un menu personnel expire après quinze minutes ; le bouton « Ouvrir le catalogue » permet alors de repartir. Cette expiration est distincte de celle du jeton Discord : une interaction doit être acquittée sous trois secondes. Un échec d’acquittement n’est jamais suivi d’un deuxième callback. Les erreurs inattendues indiquent le code Discord, l’étape, l’âge de l’interaction et les emplacements du code utiles, sans journaliser le jeton. [Délais Discord](https://docs.discord.com/developers/interactions/receiving-and-responding#interaction-callback).
+
+Après une mise à jour ajoutant des boutons au panneau, arrêter le bot, exécuter `docker compose run --rm bot node dist/cli.js setup`, puis le redémarrer. Le message du panneau existant est mis à jour, sans créer un second panneau dans le même salon. `doctor` expose les comptes du catalogue sous `catalogue.active`, `catalogue.archived` et `catalogue.unavailable` ; les salons historiques hors catalogue peuvent faire varier le nombre de salons physiques des archives.
 
 ### Sauvegarde et restauration
 

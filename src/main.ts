@@ -5,6 +5,7 @@ import { Events } from 'discord.js';
 import { bootstrap } from './bootstrap.js';
 import { DomainError } from './domain/model.js';
 import { languagesReady } from './presentation/i18n.js';
+import { logger } from './infrastructure/logger.js';
 
 async function main(): Promise<void> {
   await languagesReady;
@@ -25,7 +26,7 @@ async function main(): Promise<void> {
   };
   const heartbeat = setInterval(() => {
     if (!repository.acquireLease(owner, Date.now())) {
-      console.error(JSON.stringify({ level: 'error', event: 'lease_lost' }));
+      logger.error({ event: 'lease_lost' });
       void stop(1);
       return;
     }
@@ -53,12 +54,12 @@ async function main(): Promise<void> {
   };
   process.once('SIGINT', () => void stop());
   process.once('SIGTERM', () => void stop());
-  process.once('uncaughtException', () => {
-    console.error(JSON.stringify({ level: 'error', event: 'uncaught_exception' }));
+  process.once('uncaughtException', (err) => {
+    logger.fatal({ event: 'uncaught_exception', err });
     void stop(1);
   });
-  process.once('unhandledRejection', () => {
-    console.error(JSON.stringify({ level: 'error', event: 'unhandled_rejection' }));
+  process.once('unhandledRejection', (err) => {
+    logger.fatal({ event: 'unhandled_rejection', err });
     void stop(1);
   });
   app.controller.listen();
@@ -71,50 +72,46 @@ async function main(): Promise<void> {
       repository.maintain(Date.now());
       lastSync = Date.now();
       health(true);
-      console.info(
-        JSON.stringify({ level: 'info', event: 'reconciled', games: repository.games().length }),
-      );
+      const games = repository.games();
+      logger.info({
+        event: 'reconciled',
+        games: games.length,
+        active: games.filter((g) => g.state === 'active').length,
+        archived: games.filter((g) => g.state === 'archived').length,
+        unavailable: games.filter((g) => g.state === 'unavailable').length,
+      });
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          level: 'error',
-          event: 'reconciliation_failed',
-          code: error instanceof DomainError ? error.code : 'discordError',
-        }),
-      );
+      logger.error({
+        event: 'reconciliation_failed',
+        code: error instanceof DomainError ? error.code : 'discordError',
+        err: error,
+      });
       health(false);
     } finally {
       busy = false;
     }
   };
   client.once(Events.ClientReady, () => {
-    console.info(JSON.stringify({ level: 'info', event: 'ready', bot: '11eNexus' }));
+    logger.info({ event: 'ready', bot: '11eNexus', instanceId: owner });
     const run = () => {
       if (!busy && !stopping) syncing = synchronize();
     };
     run();
     scheduler = setInterval(run, settings.intervalSeconds * 1000);
   });
-  client.on(Events.Error, () =>
-    console.error(JSON.stringify({ level: 'error', event: 'discord_client_error' })),
-  );
+  client.on(Events.Error, (err) => logger.error({ event: 'discord_client_error', err }));
   health(false);
   try {
     await client.login(settings.token);
-  } catch {
+  } catch (err) {
+    logger.error({ event: 'discord_login_failed', err });
     await stop(1);
   }
 }
 main().catch((error) => {
-  console.error(
-    JSON.stringify({
-      level: 'error',
-      event: 'startup_failed',
-      message:
-        error instanceof Error && /^(Missing|Invalid) configuration:/.test(error.message)
-          ? error.message
-          : 'Check configuration, database and instance lease.',
-    }),
-  );
+  logger.error({
+    event: 'startup_failed',
+    err: error,
+  });
   process.exitCode = 1;
 });

@@ -59,8 +59,8 @@ export class Views {
   ) {}
   browse(actor: Actor, language: Locale, mode: Mode = 'active', page = 0, query = ''): View {
     const t = translator(language);
-    const games = this.repository
-      .games()
+    const catalogue = this.repository.games();
+    const games = catalogue
       .filter((g) =>
         mode === 'subscribed'
           ? this.repository.subscribed(g.id, actor.id)
@@ -121,11 +121,36 @@ export class Views {
       embeds: [
         new EmbedBuilder()
           .setColor(0x557c5b)
-          .setTitle(t(mode === 'subscribed' ? 'notifications' : 'games'))
+          .setTitle(
+            t(
+              mode === 'subscribed'
+                ? 'notifications'
+                : mode === 'archived'
+                  ? 'archivedGames'
+                  : mode === 'all'
+                    ? 'games'
+                    : 'activeGames',
+            ),
+          )
           .setDescription(
-            slice.length
-              ? slice.map((g) => `**${escapeMarkdown(g.name)}** · ${t(g.state)}`).join('\n')
-              : t('empty'),
+            [
+              t('catalogueSummary', {
+                total: catalogue.length,
+                active: catalogue.filter((g) => g.state === 'active').length,
+                archived: catalogue.filter((g) => g.state === 'archived').length,
+              }),
+              catalogue.some((g) => g.state === 'unavailable')
+                ? t('unavailableCount', {
+                    count: catalogue.filter((g) => g.state === 'unavailable').length,
+                  })
+                : '',
+              mode === 'active' ? t('catalogueFilterHint') : '',
+              slice.length
+                ? slice.map((g) => `**${escapeMarkdown(g.name)}** · ${t(g.state)}`).join('\n')
+                : t('empty'),
+            ]
+              .filter(Boolean)
+              .join('\n\n'),
           )
           .setFooter({ text: `${page + 1}/${maximum + 1} · ${games.length}` }),
       ],

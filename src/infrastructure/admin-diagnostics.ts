@@ -22,6 +22,13 @@ const hints: Record<string, string> = {
   10004: 'Check GUILD_ID and that the bot belongs to this Discord server.',
   50001: 'The bot cannot access the Discord resource. Check server membership and permissions.',
   50013: 'Check bot permissions and its role position in Discord.',
+  10062: 'The interaction expired before Discord acknowledged it. Open a fresh panel.',
+  10015: 'The interaction webhook has expired. Open a fresh panel.',
+  40060: 'The interaction was already acknowledged. Check for duplicate bot instances.',
+  50027: 'The interaction webhook token is invalid or expired. Open a fresh panel.',
+  50035: 'Discord rejected the response payload. Check component and message limits.',
+  InteractionAlreadyReplied: 'This interaction was already acknowledged; do not reply twice.',
+  InteractionNotReplied: 'The interaction must be acknowledged before editing its reply.',
   4004: 'Discord rejected authentication. Check BOT_TOKEN.',
   4014: 'Enable Server Members Intent for the bot in the Discord developer portal.',
 };

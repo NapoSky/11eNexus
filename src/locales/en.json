@@ -1,6 +1,12 @@
 {
   "title": "11eNexus",
   "games": "Games",
+  "activeGames": "Active games",
+  "archivedGames": "Archived games",
+  "catalogueSummary": "{{total}} games in the catalogue · {{active}} active · {{archived}} archived",
+  "unavailableCount": "{{count}} unavailable",
+  "catalogueFilterHint": "Use the Archived filter to find and bring back other games.",
+  "reopenCatalogue": "Open catalogue",
   "notifications": "Notifications",
   "suggest": "Suggest",
   "active": "Active",

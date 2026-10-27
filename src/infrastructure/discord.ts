@@ -17,6 +17,7 @@ import type { Activity, Community, World, Repository } from '../application/port
 import type { Config } from './config.js';
 import { translator } from '../presentation/i18n.js';
 import { discordAttachment } from './images.js';
+import { logger } from './logger.js';
 
 export function discordClient(): Client {
   return new Client({
@@ -343,8 +344,8 @@ export class DiscordCommunity implements Community {
       const t = translator(guild.preferredLocale.startsWith('fr') ? 'fr' : 'en');
       await channel.send({ content: t(textKey, values), allowedMentions: { parse: [] } });
       this.repository.set(`alert:${key}`, Date.now());
-    } catch {
-      console.error(JSON.stringify({ level: 'error', event: 'admin_alert_failed', key: textKey }));
+    } catch (err) {
+      logger.error({ event: 'admin_alert_failed', key: textKey, err });
     }
   }
   private async latestHuman(channel: GuildBasedChannel, since: number): Promise<Activity> {
@@ -431,8 +432,8 @@ export class DiscordCommunity implements Community {
         return;
       const id = message.channel.isThread() ? message.channel.parentId : message.channelId;
       if (id)
-        handler(id, message.createdTimestamp).catch(() =>
-          console.error(JSON.stringify({ level: 'error', event: 'activity_record_failed' })),
+        handler(id, message.createdTimestamp).catch((err) =>
+          logger.error({ event: 'activity_record_failed', err }),
         );
     });
   }

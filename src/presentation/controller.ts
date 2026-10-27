@@ -13,6 +13,7 @@ import {
   type Interaction,
   type ChatInputCommandInteraction,
   type Message,
+  type InteractionEditReplyOptions,
 } from 'discord.js';
 import { resolve } from 'node:path';
 import {
@@ -29,6 +30,40 @@ import { discordAttachment } from '../infrastructure/images.js';
 import { commands } from './commands.js';
 import { locale, translator } from './i18n.js';
 import { ownedSession, session, Views, type Mode } from './views.js';
+import { logger, type AppLogger } from '../infrastructure/logger.js';
+
+const actions = new Set([
+  'games',
+  'archives',
+  'notifications',
+  'propose',
+  'search',
+  'manual',
+  'notify',
+  'amend',
+  'catalogue',
+  'filter',
+  'game',
+  'candidate',
+  'proposal',
+  'results',
+  'back',
+  'requests',
+  'admin',
+  'next',
+  'previous',
+  'create',
+  'activate',
+  'subscribe',
+  'unsubscribe',
+]);
+const unavailableResponse = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object' || !('code' in error)) return false;
+  return (
+    [10062, 10015, 40060, 50027].includes(Number(error.code)) ||
+    error.code === 'InteractionAlreadyReplied'
+  );
+};
 
 const string = (s: Session, key: string): string => {
   const value = s.data[key];
@@ -41,13 +76,14 @@ export class Controller {
   constructor(
     readonly nexus: Nexus,
     readonly gateway: DiscordCommunity,
+    private readonly log: AppLogger = logger.child({ component: 'interactions' }),
   ) {
     this.views = new Views(nexus.repository, gateway.config.guildId);
   }
   listen(): void {
     this.gateway.client.on(Events.InteractionCreate, (i) => {
-      const task = this.handle(i).catch(() =>
-        console.error(JSON.stringify({ level: 'error', event: 'interaction_handler_failed' })),
+      const task = this.handle(i).catch((err) =>
+        this.log.error({ event: 'interaction_handler_failed', err }),
       );
       this.pending.add(task);
       void task.finally(() => this.pending.delete(task));
@@ -103,6 +139,10 @@ export class Controller {
             .setCustomId('nx:games')
             .setLabel('Jeux / Games')
             .setStyle(ButtonStyle.Primary),
+          new ButtonBuilder()
+            .setCustomId('nx:archives')
+            .setLabel('Archives')
+            .setStyle(ButtonStyle.Secondary),
           new ButtonBuilder()
             .setCustomId('nx:notifications')
             .setLabel('Notifications')
@@ -166,6 +206,7 @@ export class Controller {
   }
   async handle(interaction: Interaction): Promise<void> {
     if (interaction.isAutocomplete()) {
+      let attempted = false;
       try {
         const actor = this.actor(interaction);
         requireAdmin(actor);
@@ -178,14 +219,29 @@ export class Controller {
                 .filter((p) => p.status === 'pending' || p.status === 'needs_info')
                 .map((p) => ({ name: p.name, value: p.id }))
             : this.nexus.repository.games().map((g) => ({ name: g.name, value: g.id }));
+        attempted = true;
         await interaction.respond(
           options
             .filter((o) => normalize(o.name).includes(query))
             .slice(0, 25)
             .map((o) => ({ ...o, name: o.name.slice(0, 100) })),
         );
-      } catch {
-        await interaction.respond([]).catch(() => undefined);
+      } catch (err) {
+        if (attempted) {
+          this.log.warn({
+            event: 'autocomplete_response_failed',
+            interactionId: interaction.id,
+            err,
+          });
+          return;
+        }
+        await interaction.respond([]).catch((error) =>
+          this.log.warn({
+            event: 'autocomplete_response_failed',
+            interactionId: interaction.id,
+            err: error,
+          }),
+        );
       }
       return;
     }
@@ -199,6 +255,31 @@ export class Controller {
     const i = interaction;
     const language = locale(i.locale);
     const t = translator(language);
+    const startedAt = Date.now();
+    const actionName = 'customId' in i ? i.customId.split(':')[1] || '' : '';
+    let phase = 'authorize';
+    let acknowledgementAttempted = false;
+    const context = () => ({
+      interactionId: i.id,
+      action: actions.has(actionName)
+        ? actionName
+        : i.isChatInputCommand()
+          ? i.commandName
+          : 'unknown',
+      phase,
+      elapsedMs: Date.now() - startedAt,
+      interactionAgeMs:
+        typeof i.createdTimestamp === 'number'
+          ? Math.max(0, Date.now() - i.createdTimestamp)
+          : undefined,
+      deferred: i.deferred,
+      replied: i.replied,
+    });
+    const respond = async (payload: InteractionEditReplyOptions) => {
+      phase = 'edit_reply';
+      await i.editReply(payload);
+      phase = 'handle';
+    };
     try {
       let actor = this.actor(i);
       requireMember(actor);
@@ -215,6 +296,8 @@ export class Controller {
           const p = this.nexus.repository.proposal(string(data, 'proposalId'));
           if (!p || p.actorId !== actor.id || p.status !== 'needs_info')
             throw new DomainError('forbidden');
+          phase = 'show_modal';
+          acknowledgementAttempted = true;
           await i.showModal(
             this.modal(`nxm:amend:${data.id}`, t('amend'), [
               { id: 'name', label: t('query'), value: p.name },
@@ -224,6 +307,8 @@ export class Controller {
           return;
         }
         if (action === 'manual') {
+          phase = 'show_modal';
+          acknowledgementAttempted = true;
           await i.showModal(
             this.modal(`nxm:manual:${data.id}`, t('request'), [
               {
@@ -243,6 +328,8 @@ export class Controller {
         }
         if (action === 'notify') {
           if (data.kind !== 'game') throw new DomainError('invalidInput');
+          phase = 'show_modal';
+          acknowledgementAttempted = true;
           await i.showModal(
             this.modal(`nxm:notify:${data.id}`, t('notify'), [
               { id: 'message', label: t('notificationText'), max: 1000, paragraph: true },
@@ -250,6 +337,8 @@ export class Controller {
           );
           return;
         }
+        phase = 'show_modal';
+        acknowledgementAttempted = true;
         await i.showModal(
           this.modal(
             `nxm:${action === 'propose' ? 'catalogue' : 'search'}:${data.id}`,
@@ -259,10 +348,14 @@ export class Controller {
         );
         return;
       }
+      phase = 'acknowledge';
+      acknowledgementAttempted = true;
       if (i.isButton() || i.isStringSelectMenu()) {
         if (s) await i.deferUpdate();
         else await i.deferReply({ flags: MessageFlags.Ephemeral });
       } else await i.deferReply({ flags: MessageFlags.Ephemeral });
+      this.log.debug({ event: 'interaction_acknowledged', ...context() });
+      phase = 'handle';
       // Fresh REST role observation for every state-changing operation after acknowledgement.
       if (
         i.isChatInputCommand() ||
@@ -274,7 +367,7 @@ export class Controller {
       }
       if (i.isChatInputCommand()) {
         if (i.commandName === 'nexus') {
-          await i.editReply(this.views.browse(actor, language));
+          await respond(this.views.browse(actor, language));
           return;
         }
         if (i.commandName === 'nexus-admin') {
@@ -293,7 +386,7 @@ export class Controller {
             i.fields.getTextInputValue('name'),
             i.fields.getTextInputValue('url'),
           );
-          await i.editReply({
+          await respond({
             ...this.views.proposal(actor, language, p),
             content: t('requestUpdated'),
           });
@@ -306,7 +399,7 @@ export class Controller {
             i.fields.getTextInputValue('url'),
             language,
           );
-          await i.editReply({
+          await respond({
             ...this.views.proposal(actor, language, proposal),
             content: t('requestRecorded', { game: proposal.name }),
           });
@@ -318,14 +411,14 @@ export class Controller {
             string(s, 'gameId'),
             i.fields.getTextInputValue('message'),
           );
-          await i.editReply(
+          await respond(
             this.views.game(actor, language, string(s, 'gameId'), t('notificationSent')),
           );
           return;
         }
         const query = i.fields.getTextInputValue('query').trim();
         if (action === 'search') {
-          await i.editReply(this.views.browse(actor, language, 'all', 0, query));
+          await respond(this.views.browse(actor, language, 'all', 0, query));
           return;
         }
         if (action === 'catalogue') {
@@ -337,7 +430,7 @@ export class Controller {
                 g.aliases.some((a) => normalize(a) === normalize(query)),
             );
           if (local.length === 1) {
-            await i.editReply(this.views.game(actor, language, local[0]!.id));
+            await respond(this.views.game(actor, language, local[0]!.id));
             return;
           }
           const key = `search:${actor.id}`;
@@ -347,19 +440,23 @@ export class Controller {
           this.nexus.repository.set(key, [...active, Date.now()]);
           try {
             const candidates = await this.nexus.catalogue.search(query);
-            await i.editReply(this.views.candidates(actor, language, query, candidates));
+            await respond(this.views.candidates(actor, language, query, candidates));
           } catch (error) {
             if (!(error instanceof DomainError)) throw error;
-            await i.editReply(this.views.candidates(actor, language, query, [], t(error.code)));
+            await respond(this.views.candidates(actor, language, query, [], t(error.code)));
           }
           return;
         }
         throw new DomainError('invalidInput');
       }
       if (!s) {
-        if (action === 'games' || action === 'notifications')
-          await i.editReply(
-            this.views.browse(actor, language, action === 'games' ? 'active' : 'subscribed'),
+        if (action === 'games' || action === 'archives' || action === 'notifications')
+          await respond(
+            this.views.browse(
+              actor,
+              language,
+              action === 'archives' ? 'archived' : action === 'games' ? 'active' : 'subscribed',
+            ),
           );
         else throw new DomainError('invalidInput');
         return;
@@ -368,13 +465,13 @@ export class Controller {
         const selected = i.values[0];
         if (!selected) throw new DomainError('invalidInput');
         if (action === 'filter' && ['active', 'archived', 'all', 'subscribed'].includes(selected)) {
-          await i.editReply(this.views.browse(actor, language, selected as Mode));
+          await respond(this.views.browse(actor, language, selected as Mode));
           return;
         }
         if (action === 'game') {
           if (s.kind !== 'browse' || !(s.data.ids as string[]).includes(selected))
             throw new DomainError('invalidInput');
-          await i.editReply(this.views.game(actor, language, selected));
+          await respond(this.views.game(actor, language, selected));
           return;
         }
         if (action === 'candidate') {
@@ -383,13 +480,13 @@ export class Controller {
             throw new DomainError('invalidInput');
           const existing = this.nexus.repository.byRawg(id);
           if (existing) {
-            await i.editReply(this.views.game(actor, language, existing.id));
+            await respond(this.views.game(actor, language, existing.id));
             return;
           }
           const candidate = await this.nexus.catalogue.get(id);
           const asset = await this.nexus.catalogue.image(candidate).catch(() => null);
           if (asset) this.nexus.repository.saveAsset(asset);
-          await i.editReply(
+          await respond(
             this.views.candidate(actor, language, candidate, asset?.id || null, string(s, 'query')),
           );
           return;
@@ -398,7 +495,7 @@ export class Controller {
           if (!(s.data.ids as string[]).includes(selected)) throw new DomainError('invalidInput');
           const p = this.nexus.repository.proposal(selected);
           if (!p) throw new DomainError('notFound');
-          await i.editReply(this.views.proposal(actor, language, p));
+          await respond(this.views.proposal(actor, language, p));
           return;
         }
         throw new DomainError('invalidInput');
@@ -406,28 +503,28 @@ export class Controller {
       if (action === 'results') {
         if (s.kind !== 'candidate') throw new DomainError('invalidInput');
         const query = string(s, 'query');
-        await i.editReply(
+        await respond(
           this.views.candidates(actor, language, query, await this.nexus.catalogue.search(query)),
         );
         return;
       }
       if (action === 'back') {
-        await i.editReply(this.views.browse(actor, language));
+        await respond(this.views.browse(actor, language));
         return;
       }
       if (action === 'requests' || action === 'admin') {
         if (action === 'admin') requireAdmin(actor);
-        await i.editReply(this.views.proposals(actor, language, action === 'admin'));
+        await respond(this.views.proposals(actor, language, action === 'admin'));
         return;
       }
       if (action === 'next' || action === 'previous') {
         const page = Number(s.data.page) + (action === 'next' ? 1 : -1);
         if (s.kind === 'proposals') {
-          await i.editReply(this.views.proposals(actor, language, s.data.admin === true, page));
+          await respond(this.views.proposals(actor, language, s.data.admin === true, page));
           return;
         }
         if (s.kind !== 'browse') throw new DomainError('invalidInput');
-        await i.editReply(
+        await respond(
           this.views.browse(actor, language, s.data.mode as Mode, page, String(s.data.query || '')),
         );
         return;
@@ -435,37 +532,61 @@ export class Controller {
       if (action === 'create') {
         if (s.kind !== 'candidate') throw new DomainError('invalidInput');
         const game = await this.nexus.create(actor, Number(s.data.rawgId));
-        await i.editReply(
-          this.views.game(actor, language, game.id, t('created', { game: game.name })),
-        );
+        await respond(this.views.game(actor, language, game.id, t('created', { game: game.name })));
         return;
       }
       if (s.kind !== 'game') throw new DomainError('invalidInput');
       const id = string(s, 'gameId');
       if (action === 'activate') {
         const game = await this.nexus.activate(actor, id);
-        await i.editReply(
-          this.views.game(actor, language, id, t('activated', { game: game.name })),
-        );
+        await respond(this.views.game(actor, language, id, t('activated', { game: game.name })));
         return;
       }
       if (action === 'subscribe' || action === 'unsubscribe') {
         await this.nexus.subscribe(actor, id, action === 'subscribe');
-        await i.editReply(this.views.game(actor, language, id));
+        await respond(this.views.game(actor, language, id));
         return;
       }
       throw new DomainError('invalidInput');
     } catch (error) {
       const key = error instanceof DomainError ? error.code : 'unknownError';
-      console.error(JSON.stringify({ level: 'warn', event: 'interaction_error', code: key }));
+      const details = { event: 'interaction_error', code: key, ...context(), err: error };
+      if (key === 'expired') this.log.debug({ ...details, event: 'menu_expired' });
+      else if (error instanceof DomainError || unavailableResponse(error)) this.log.warn(details);
+      else this.log.error(details);
+      // A failed acknowledgement has an uncertain/expired token. Never send a second callback.
+      if (unavailableResponse(error) || (acknowledgementAttempted && !i.deferred && !i.replied))
+        return;
       const content = t(key, error instanceof DomainError ? error.values : {});
+      const components =
+        key === 'expired'
+          ? [
+              new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                  .setCustomId('nx:games')
+                  .setLabel(t('reopenCatalogue'))
+                  .setStyle(ButtonStyle.Primary),
+              ),
+            ]
+          : [];
       try {
         if (i.deferred || i.replied)
-          await i.editReply({ content, embeds: [], components: [], attachments: [] });
+          await i.editReply({
+            content,
+            embeds: [],
+            components,
+            attachments: [],
+            allowedMentions: { parse: [] },
+          });
         else
-          await i.reply({ content, flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
-      } catch {
-        console.error(JSON.stringify({ level: 'warn', event: 'interaction_reply_expired' }));
+          await i.reply({
+            content,
+            components,
+            flags: MessageFlags.Ephemeral,
+            allowedMentions: { parse: [] },
+          });
+      } catch (err) {
+        this.log.warn({ event: 'interaction_error_response_failed', ...context(), err });
       }
     }
   }

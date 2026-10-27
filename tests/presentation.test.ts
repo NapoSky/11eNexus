@@ -52,6 +52,25 @@ test('150 games fit within Discord component limits and are paginated 20 at a ti
   );
   expect(first[2]?.components).toHaveLength(4);
 });
+test.each(['fr', 'en'] as const)(
+  'the %s catalogue distinguishes active games from the full import and paginates archives',
+  (language) => {
+    for (let i = 0; i < 15; i++) f.add(game({ name: `Active ${i}` }));
+    for (let i = 0; i < 41; i++) f.add(game({ name: `Archived ${i}`, state: 'archived' }));
+    const active = JSON.stringify(views.browse(member, language));
+    expect(active).toContain('56');
+    expect(active).toContain('15');
+    expect(active).toContain('41');
+    expect(active).not.toContain('Archived 0');
+    const first = components(views.browse(member, language, 'archived', 0))[0]!.components[0]!;
+    const last = components(views.browse(member, language, 'archived', 2))[0]!.components[0]!;
+    if (first.type !== ComponentType.StringSelect || last.type !== ComponentType.StringSelect)
+      throw new Error('select expected');
+    expect(first.options).toHaveLength(20);
+    expect(last.options).toHaveLength(1);
+    expect(new Set([...first.options, ...last.options].map((o) => o.value)).size).toBe(21);
+  },
+);
 test('a personal interaction cannot be reused by another user and expires after 15 minutes', () => {
   const s = session(f.repository, member.id, 'game', { gameId: 'x' });
   expect(ownedSession(f.repository, member.id, s.id)).toEqual(s);
