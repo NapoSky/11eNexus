@@ -55,6 +55,12 @@ docker compose logs --tail 100 bot
 
 `setup --channel ID` réutilise un salon textuel dédié et **remplace ses permissions** par celles du panneau en lecture seule. Sans ce paramètre, un salon Nexus est créé. Réexécuter `setup` répare le message connu plutôt que publier un doublon. `/nexus-admin setup` est ensuite disponible aux admins ; `/nexus` constitue un accès de secours aux parcours personnels.
 
+Le panneau et les écrans personnels utilisent les **Components V2** : logo et bannière, rubriques courtes, aide au choix et fiches de jeu. Le panneau reste unique et bilingue ; la suite s’affiche en privé, en FR ou EN selon Discord. Les modales indiquent quoi saisir et l’effet de la validation ; les fermer ramène au menu précédent.
+
+Les boutons gris servent à naviguer (filtres, recherche, pages, Retour, Accueil), les bleus à relancer ou prévenir les joueurs, les verts à ajouter un jeu ou activer ses notifications. Couper les notifications utilise un bouton rouge. Retour conserve le filtre, la recherche et la page du catalogue ; une demande acceptée permet aussi d’ouvrir la fiche d’un jeu archivé pour le relancer. `/nexus` ouvre l’accueil personnel.
+
+Pour passer un panneau existant en V2 après reconstruction de l’image : arrêter le bot, exécuter `docker compose run --rm bot node dist/cli.js setup`, puis `docker compose up -d`. Le même message est mis à jour. Aucun nouvel import n’est nécessaire. La conversion d’un message en V2 est définitive côté Discord ; les mises à jour et déplacements du panneau conservent ce format. Les anciens boutons publics restent utilisables pendant la transition.
+
 Les commandes admin ont une permission Discord par défaut `Administrator`, en plus du contrôle du rôle admin configuré côté bot. Si ce rôle n’a pas `Administrator`, lui autoriser explicitement `/nexus-admin` dans les paramètres d’intégration Discord.
 
 ### Importer les anciens jeux
@@ -103,7 +109,7 @@ Les logs de service utilisent Pino sur stderr, avec date, niveau, évènement et
 
 La réconciliation compare les abonnés et applique uniquement les différences en une transaction SQLite, sans réécrire les abonnés inchangés. Elle rend la main aux entrées/sorties entre chaque jeu pour laisser passer les clics pendant le traitement de fond. Les évènements `reconciliation_started` et `reconciled.elapsedMs` permettent de suivre ce traitement ; `event_loop_blocked` signale un blocage de la boucle Node d’au moins une seconde. Les erreurs d’interaction indiquent aussi `receivedAgeMs` (âge calculé à l’entrée du handler), `elapsedMs` (traitement local) et `gatewayPingMs` lorsqu’il est connu. Un âge calculé dépend également de l’horloge de l’hôte ; il ne prouve pas à lui seul une latence réseau.
 
-Un menu personnel expire après quinze minutes ; le bouton « Ouvrir le catalogue » permet alors de repartir. Cette expiration est distincte de celle du jeton Discord : une interaction doit être acquittée sous trois secondes. Un échec d’acquittement n’est jamais suivi d’un deuxième callback. Les erreurs inattendues indiquent le code Discord, l’étape, l’âge de l’interaction et les emplacements du code utiles, sans journaliser le jeton. [Délais Discord](https://docs.discord.com/developers/interactions/receiving-and-responding#interaction-callback).
+Un menu personnel expire après quinze minutes ; le bouton « Accueil » permet alors de repartir. Cette expiration est distincte de celle du jeton Discord : une interaction doit être acquittée sous trois secondes. Un échec d’acquittement n’est jamais suivi d’un deuxième callback. Les erreurs inattendues indiquent le code Discord, l’étape, l’âge de l’interaction et les emplacements du code utiles, sans journaliser le jeton. [Délais Discord](https://docs.discord.com/developers/interactions/receiving-and-responding#interaction-callback).
 
 Après une mise à jour ajoutant des boutons au panneau, arrêter le bot, exécuter `docker compose run --rm bot node dist/cli.js setup`, puis le redémarrer. Le message du panneau existant est mis à jour, sans créer un second panneau dans le même salon. `doctor` expose les comptes du catalogue sous `catalogue.active`, `catalogue.archived` et `catalogue.unavailable` ; les salons historiques hors catalogue peuvent faire varier le nombre de salons physiques des archives.
 

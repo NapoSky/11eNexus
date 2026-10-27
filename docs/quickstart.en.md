@@ -4,6 +4,10 @@
 
 **Games** opens active games; **Archives** opens archived games even though their channels are hidden. The personal catalogue shows the full catalogue count and the active/archived counts. Its filter also offers all games. A list of fifteen active games does not mean only fifteen were imported.
 
+The public panel and private pages use **Components V2**, with short explanations next to the choices. Gray buttons navigate; blue buttons revive a game or notify players, green buttons add a game or enable notifications, and red buttons turn notifications off. Back keeps the catalogue filter, search and page. Home returns to the private starting menu, also available with `/nexus`. Forms explain their fields and what submitting will do; closing a form leaves the previous menu in place. Submitting from a private menu updates that menu rather than adding another reply.
+
+After rebuilding the image, stop the bot and rerun `docker compose run --rm bot node dist/cli.js setup`, then `docker compose up -d`. Setup converts the existing panel message to V2 without a duplicate or another import. Discord makes this message conversion permanent; future edits and panel moves retain V2. Old public buttons remain compatible during the transition.
+
 1. Copy `.env.example` to `.env` and supply the existing Discord bot token, guild ID and RAWG key. Protect it with `chmod 600 .env`.
 2. Enable **Server Members Intent** in Discord’s Developer Portal. Place the bot’s role above game roles. Grant channel/role management, history, attachments/embeds, thread management, and role mention permissions. Onboarding edits also require server management. Message content intent is unnecessary.
 3. Build with `docker compose build --pull`, then run `docker compose run --rm bot node dist/cli.js doctor` for a read-only check.
@@ -22,7 +26,7 @@ For an existing import made with non-mentionable roles, stop the bot and run `do
 
 Discord wins during reconciliation. Manual channel moves, deleted resources and changed role holders are observed. Ambiguous partial operations require explicit administrator repair. No automatic channel deletion or history merging occurs.
 
-Service logs use Pino: `LOG_FORMAT=json` by default, or `LOG_FORMAT=pretty` for readable Docker logs. `LOG_LEVEL=debug` includes interaction acknowledgement timing. Errors retain Discord codes, processing phases and safe source locations without tokens, request bodies or member text. Expired personal menus offer an Open catalogue button. Failed interaction acknowledgements are never retried with a second callback.
+Service logs use Pino: `LOG_FORMAT=json` by default, or `LOG_FORMAT=pretty` for readable Docker logs. `LOG_LEVEL=debug` includes interaction acknowledgement timing. Errors retain Discord codes, processing phases and safe source locations without tokens, request bodies or member text. Expired personal menus offer a Home button. Failed interaction acknowledgements are never retried with a second callback.
 
 Reconciliation applies only subscriber differences in one SQLite transaction and yields to I/O between games. Unchanged subscriptions cause no writes. `reconciliation_started` and `reconciled.elapsedMs` show progress; `event_loop_blocked` reports an event-loop delay of at least one second. Interaction logs distinguish age on receipt (`receivedAgeMs`) from local processing time (`elapsedMs`) and include Gateway latency when known. Calculated interaction age also depends on host clock accuracy.
 

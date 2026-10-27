@@ -1,9 +1,6 @@
-import {
-  ComponentType,
-  type APIActionRowComponent,
-  type APIComponentInMessageActionRow,
-} from 'discord.js';
-import { Views, ownedSession, session, type View } from '../src/presentation/views.js';
+import { ComponentType, MessageFlags, ButtonStyle } from 'discord.js';
+import { nodes, controls, select, actionId } from './component-helpers.js';
+import { Views, ownedSession, session, editView, type View } from '../src/presentation/views.js';
 import { commands } from '../src/presentation/commands.js';
 import { locale, translator, languagesReady } from '../src/presentation/i18n.js';
 import fr from '../src/locales/fr.json';
@@ -18,11 +15,6 @@ beforeEach(async () => {
   views = new Views(f.repository, '100000000000000000');
 });
 afterEach(() => f.repository.close());
-function components(view: View) {
-  return JSON.parse(
-    JSON.stringify(view.components),
-  ) as APIActionRowComponent<APIComponentInMessageActionRow>[];
-}
 test('FR/EN keys and interpolation placeholders are identical with English fallback', () => {
   expect(Object.keys(fr).sort()).toEqual(Object.keys(en).sort());
   for (const key of Object.keys(en) as (keyof typeof en)[])
@@ -34,23 +26,11 @@ test('FR/EN keys and interpolation placeholders are identical with English fallb
 test('150 games fit within Discord component limits and are paginated 20 at a time', () => {
   for (let i = 0; i < 150; i++)
     f.repository.saveGame(game({ name: `Game ${i.toString().padStart(3, '0')}` }));
-  const first = components(views.browse(member, 'fr'));
-  const last = components(views.browse(member, 'en', 'active', 7));
-  expect(first).toHaveLength(3);
-  expect(first[0]?.components[0]?.type).toBe(ComponentType.StringSelect);
-  const firstSelect = first[0]!.components[0]!;
-  const lastSelect = last[0]!.components[0]!;
-  if (
-    firstSelect.type !== ComponentType.StringSelect ||
-    lastSelect.type !== ComponentType.StringSelect
-  )
-    throw new Error('select expected');
-  expect(firstSelect.options).toHaveLength(20);
-  expect(lastSelect.options).toHaveLength(10);
-  expect(new Set([...firstSelect.options, ...lastSelect.options].map((o) => o.value)).size).toBe(
-    30,
-  );
-  expect(first[2]?.components).toHaveLength(4);
+  const first = select(views.browse(member, 'fr'));
+  const last = select(views.browse(member, 'en', 'active', 7));
+  expect(first).toHaveLength(20);
+  expect(last).toHaveLength(10);
+  expect(new Set([...first, ...last].map((o) => o.value)).size).toBe(30);
 });
 test.each(['fr', 'en'] as const)(
   'the %s catalogue distinguishes active games from the full import and paginates archives',
@@ -62,13 +42,11 @@ test.each(['fr', 'en'] as const)(
     expect(active).toContain('15');
     expect(active).toContain('41');
     expect(active).not.toContain('Archived 0');
-    const first = components(views.browse(member, language, 'archived', 0))[0]!.components[0]!;
-    const last = components(views.browse(member, language, 'archived', 2))[0]!.components[0]!;
-    if (first.type !== ComponentType.StringSelect || last.type !== ComponentType.StringSelect)
-      throw new Error('select expected');
-    expect(first.options).toHaveLength(20);
-    expect(last.options).toHaveLength(1);
-    expect(new Set([...first.options, ...last.options].map((o) => o.value)).size).toBe(21);
+    const first = select(views.browse(member, language, 'archived', 0));
+    const last = select(views.browse(member, language, 'archived', 2));
+    expect(first).toHaveLength(20);
+    expect(last).toHaveLength(1);
+    expect(new Set([...first, ...last].map((o) => o.value)).size).toBe(21);
   },
 );
 test('a personal interaction cannot be reused by another user and expires after 15 minutes', () => {
@@ -91,11 +69,10 @@ test('all proposals remain reachable after the first 20 and are isolated by requ
       gameId: null,
       locale: 'fr',
     });
-  const view = components(views.proposals(member, 'fr', false, 2));
-  const select = view[0]!.components[0]!;
-  if (select.type !== ComponentType.StringSelect) throw new Error('select');
-  expect(select.options).toHaveLength(5);
-  expect(components(views.proposals(outsider, 'en'))).toHaveLength(1);
+  expect(select(views.proposals(member, 'fr', false, 2))).toHaveLength(5);
+  expect(
+    nodes(views.proposals(outsider, 'en')).some((n) => n.type === ComponentType.StringSelect),
+  ).toBe(false);
   expect(() => views.proposals(member, 'fr', true)).toThrow('adminOnly');
 });
 test('a game card does not conflate channel visibility and notification preference', () => {
@@ -148,9 +125,10 @@ test('a missing image disables creation and leaves the manual review path availa
     },
     null,
   );
-  const row = components(view)[0]!;
-  expect(row.components[0]).toMatchObject({ disabled: true });
-  expect(JSON.stringify(row)).toContain('nx:manual:');
+  expect(controls(view).find((n) => n.custom_id?.startsWith('nx:create:'))).toMatchObject({
+    disabled: true,
+  });
+  expect(JSON.stringify(view)).toContain('nx:manual:');
 });
 test('all command and option descriptions are localized in French', () => {
   function check(value: unknown): void {
@@ -176,4 +154,168 @@ test('a request for details offers an owner-only amendment action', () => {
   };
   expect(JSON.stringify(views.proposal(member, 'en', p))).toContain('nx:amend:');
   expect(JSON.stringify(views.proposal(admin, 'fr', p))).not.toContain('nx:amend:');
+});
+
+test.each(['fr', 'en'] as const)(
+  '%s screens serialize as valid V2 messages within Discord limits',
+  (language) => {
+    for (let i = 0; i < 150; i++)
+      f.add(game({ name: `Game ${i}`, state: i < 15 ? 'active' : 'archived', assetId: 'asset' }));
+    const g = f.repository.games()[0]!;
+    const candidate = {
+      id: 123,
+      name: 'Example game',
+      studio: 'Studio',
+      released: '2026-01-01',
+      imageUrl: null,
+      url: 'https://rawg.io/games/123',
+    };
+    const proposal = {
+      id: 'p',
+      actorId: member.id,
+      name: 'A game',
+      url: 'https://example.com',
+      createdAt: 1,
+      status: 'needs_info' as const,
+      reason: 'Which edition?',
+      gameId: null,
+      locale: language,
+    };
+    const screens: View[] = [
+      views.panel(),
+      views.movedPanel('123'),
+      views.home(member, language),
+      views.home(admin, language),
+      views.game(member, language, g.id),
+      views.candidates(member, language, 'Example', [candidate]),
+      views.candidates(member, language, 'Unknown', []),
+      views.candidate(member, language, candidate, 'asset'),
+      views.candidate(member, language, candidate, null),
+      views.proposals(member, language),
+      views.proposals(admin, language, true),
+      views.proposal(member, language, proposal),
+      views.feedback(language, 'Try again', true),
+    ];
+    for (const mode of ['active', 'archived', 'all', 'subscribed'] as const) {
+      for (let page = 0; page < 8; page++)
+        screens.push(views.browse(admin, language, mode, page, 'Game'));
+    }
+    for (const screen of screens) {
+      expect(screen.flags).toBe(MessageFlags.IsComponentsV2);
+      expect(screen).not.toHaveProperty('content');
+      expect(screen).not.toHaveProperty('embeds');
+      const serialized = nodes(screen);
+      expect(serialized.length).toBeLessThanOrEqual(40);
+      expect(
+        serialized
+          .filter((n) => n.type === ComponentType.TextDisplay)
+          .map((n) => n.content)
+          .join('').length,
+      ).toBeLessThanOrEqual(4000);
+      for (const n of serialized) {
+        if (n.type === ComponentType.ActionRow) {
+          expect(n.components!.length).toBeLessThanOrEqual(
+            n.components?.[0]?.type === ComponentType.StringSelect ? 1 : 5,
+          );
+        }
+        if (n.custom_id) expect(n.custom_id.length).toBeLessThanOrEqual(100);
+        if (n.options) expect(n.options.length).toBeLessThanOrEqual(25);
+      }
+      expect(screen.allowedMentions).toEqual({ parse: [] });
+      expect(editView(screen)).toMatchObject({
+        content: null,
+        embeds: [],
+        attachments: [],
+        flags: MessageFlags.IsComponentsV2,
+      });
+    }
+  },
+);
+
+test('navigation is gray, adding/subscribing green, revival blue and unsubscribing red', () => {
+  const g = f.add(game({ state: 'archived' }));
+  const card = views.game(member, 'fr', g.id);
+  const buttons = controls(card);
+  expect(buttons.find((n) => n.custom_id?.includes(':activate:'))?.style).toBe(ButtonStyle.Primary);
+  expect(buttons.find((n) => n.custom_id?.includes(':subscribe:'))?.style).toBe(
+    ButtonStyle.Success,
+  );
+  for (const action of ['back', 'home'])
+    expect(buttons.find((n) => n.custom_id?.includes(`:${action}:`))?.style).toBe(
+      ButtonStyle.Secondary,
+    );
+  f.repository.subscribe(g.id, member.id, true);
+  expect(
+    controls(views.game(member, 'fr', g.id)).find((n) => n.custom_id?.includes(':unsubscribe:'))
+      ?.style,
+  ).toBe(ButtonStyle.Danger);
+  const catalogue = controls(views.browse(member, 'fr', 'all', 0, 'game'));
+  expect(
+    catalogue
+      .filter((n) => n.custom_id?.includes(':browse-'))
+      .every((n) => n.style === ButtonStyle.Secondary),
+  ).toBe(true);
+  expect(catalogue.find((n) => n.custom_id?.includes(':propose:'))?.style).toBe(
+    ButtonStyle.Success,
+  );
+  expect(catalogue.find((n) => n.custom_id?.includes(':clear:'))?.style).toBe(
+    ButtonStyle.Secondary,
+  );
+});
+
+test.each(['fr', 'en'] as const)(
+  '%s empty views explain a next step and always offer home',
+  (language) => {
+    for (const mode of ['active', 'archived', 'all', 'subscribed'] as const) {
+      const screen = views.browse(member, language, mode);
+      expect(JSON.stringify(screen)).toContain(translator(language)(`emptyHelp_${mode}`));
+      expect(controls(screen).some((n) => n.custom_id?.includes(':home:'))).toBe(true);
+      expect(controls(screen).some((n) => n.custom_id?.includes(':propose:'))).toBe(true);
+      expect(nodes(screen).some((n) => n.type === ComponentType.StringSelect)).toBe(false);
+    }
+    const emptySearch = views.browse(member, language, 'all', 0, 'Not found');
+    expect(JSON.stringify(emptySearch)).toContain(translator(language)('emptySearchHelp'));
+    expect(actionId(emptySearch, 'clear')).toBeDefined();
+  },
+);
+
+test('quota and unavailable resources are explained before a disabled action', () => {
+  const g = f.add(game({ state: 'archived' }));
+  f.repository.setCooldown(member.id, Date.now());
+  const screen = views.game(member, 'fr', g.id);
+  expect(controls(screen).find((n) => n.custom_id?.includes(':activate:'))?.disabled).toBe(true);
+  expect(JSON.stringify(screen)).toContain('minutes');
+  expect(controls(screen).find((n) => n.custom_id?.includes(':subscribe:'))?.disabled).toBe(false);
+  const missing = f.add(game({ state: 'archived', roleState: 'missing' }));
+  const unavailable = views.game(member, 'fr', missing.id);
+  expect(JSON.stringify(unavailable)).toContain(translator('fr')('gameNeedsHelp'));
+  expect(
+    controls(unavailable)
+      .filter((n) => /:(activate|subscribe):/.test(n.custom_id!))
+      .every((n) => n.disabled),
+  ).toBe(true);
+});
+
+test('accepted archived requests open a game card without linking a hidden channel', () => {
+  const g = f.add(game({ state: 'archived' }));
+  const p = {
+    id: 'p',
+    actorId: member.id,
+    name: 'Game',
+    url: 'https://example.com',
+    createdAt: 1,
+    status: 'accepted' as const,
+    reason: null,
+    gameId: g.id,
+    locale: 'fr' as const,
+  };
+  const screen = views.proposal(member, 'fr', p);
+  expect(actionId(screen, 'proposal-game')).toBeDefined();
+  expect(JSON.stringify(screen)).not.toContain('discord.com/channels');
+  expect(controls(views.home(member, 'fr')).some((n) => n.custom_id?.includes(':admin:'))).toBe(
+    false,
+  );
+  expect(controls(views.home(admin, 'fr')).some((n) => n.custom_id?.includes(':admin:'))).toBe(
+    true,
+  );
 });

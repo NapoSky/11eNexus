@@ -50,3 +50,11 @@ Les autorisations sont vérifiées côté serveur et actualisées pour les mutat
 - Les modifications manuelles de permissions ne sont pas corrigées en boucle. Les mouvements gérés et réparations explicites réappliquent les dérogations standard.
 - L’état `unhealthy` expose une panne ; le redémarrage et l’alerte d’infrastructure appartiennent à l’hébergeur.
 - Les tests locaux et Docker ne remplacent pas un essai sur une guilde dédiée avec les permissions et options réelles du serveur cible.
+
+## Parcours Discord
+
+`Views` produit des messages Components V2 (containers, textes, sections, boutons et médias). Les créations n’envoient ni `content` ni `embeds` ; `editView` les vide explicitement lors d’une modification, notamment pour convertir un ancien panneau. Les images jointes sont référencées par une miniature ou une galerie. Les réponses d’erreur et de confirmation gardent ce format, car le flag V2 ne peut pas être retiré.
+
+Les sessions personnelles de 15 minutes conservent une destination de retour typée (catalogue avec filtre/recherche/page, accueil, liste ou détail de demande). Les identifiants sont liés au membre ; chaque retour relit les données actuelles. Les boutons publics sans session ouvrent une réponse éphémère. Une modale issue d’un message privé met à jour ce message ; une modale issue du panneau public crée une réponse éphémère pour préserver le panneau partagé. Les modales utilisent des Labels et un texte d’aide ; la fermeture native retrouve le message d’origine.
+
+Références Discord : [Components V2](https://docs.discord.com/developers/components/reference), [modales](https://docs.discord.com/developers/components/using-modal-components), [conversion d’un message existant](https://docs.discord.com/developers/resources/message#edit-message). Les tests sérialisent les builders réels, vérifient les limites Discord et couvrent les retours, les soumissions privées/publiques et la mise à jour du panneau sans doublon.

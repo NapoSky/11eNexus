@@ -1,9 +1,7 @@
 import {
-  ActionRowBuilder,
-  AttachmentBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder,
+  LabelBuilder,
+  TextDisplayBuilder,
+  escapeMarkdown,
   Events,
   GuildMember,
   MessageFlags,
@@ -13,9 +11,7 @@ import {
   type Interaction,
   type ChatInputCommandInteraction,
   type Message,
-  type InteractionEditReplyOptions,
 } from 'discord.js';
-import { resolve } from 'node:path';
 import {
   DomainError,
   normalize,
@@ -29,10 +25,26 @@ import type { DiscordCommunity } from '../infrastructure/discord.js';
 import { discordAttachment } from '../infrastructure/images.js';
 import { commands } from './commands.js';
 import { locale, translator } from './i18n.js';
-import { ownedSession, session, Views, type Mode } from './views.js';
+import {
+  ownedSession,
+  session,
+  destination,
+  editView,
+  Views,
+  type View,
+  type Destination,
+  type Mode,
+} from './views.js';
 import { logger, type AppLogger } from '../infrastructure/logger.js';
 
 const actions = new Set([
+  'home',
+  'clear',
+  'browse-active',
+  'browse-archived',
+  'browse-all',
+  'browse-subscribed',
+  'proposal-game',
   'games',
   'archives',
   'notifications',
@@ -105,60 +117,37 @@ export class Controller {
   private modal(
     id: string,
     title: string,
-    fields: { id: string; label: string; value?: string; max?: number; paragraph?: boolean }[],
+    fields: {
+      id: string;
+      label: string;
+      description?: string;
+      value?: string;
+      max?: number;
+      paragraph?: boolean;
+    }[],
+    helper: string,
   ): ModalBuilder {
     const modal = new ModalBuilder().setCustomId(id).setTitle(title.slice(0, 45));
+    modal.addTextDisplayComponents(new TextDisplayBuilder().setContent(helper));
     for (const field of fields) {
       const input = new TextInputBuilder()
         .setCustomId(field.id)
-        .setLabel(field.label.slice(0, 45))
         .setStyle(field.paragraph ? TextInputStyle.Paragraph : TextInputStyle.Short)
         .setRequired(true)
         .setMaxLength(field.max || 100);
       if (field.value) input.setValue(field.value.slice(0, field.max || 100));
-      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+      const label = new LabelBuilder()
+        .setLabel(field.label.slice(0, 45))
+        .setTextInputComponent(input);
+      if (field.description) label.setDescription(field.description.slice(0, 100));
+      modal.addLabelComponents(label);
     }
     return modal;
   }
   async installPanel(channelId?: string): Promise<void> {
     const channel = await this.gateway.panelChannel(channelId);
     await this.gateway.securePanel(channel);
-    const fr = translator('fr');
-    const en = translator('en');
-    const embed = new EmbedBuilder()
-      .setColor(0x557c5b)
-      .setTitle('11eNexus')
-      .setDescription(`${fr('panelIntro')}\n${en('panelIntro')}`)
-      .setThumbnail('attachment://logo_nexus.png')
-      .setImage('attachment://banner_nexus.png');
-    const payload = {
-      embeds: [embed],
-      components: [
-        new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId('nx:games')
-            .setLabel('Jeux / Games')
-            .setStyle(ButtonStyle.Primary),
-          new ButtonBuilder()
-            .setCustomId('nx:archives')
-            .setLabel('Archives')
-            .setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder()
-            .setCustomId('nx:notifications')
-            .setLabel('Notifications')
-            .setStyle(ButtonStyle.Secondary),
-          new ButtonBuilder()
-            .setCustomId('nx:propose')
-            .setLabel('Proposer / Suggest')
-            .setStyle(ButtonStyle.Success),
-        ),
-      ],
-      files: [
-        new AttachmentBuilder(resolve('logo_nexus.png')),
-        new AttachmentBuilder(resolve('banner_nexus.png')),
-      ],
-      allowedMentions: { parse: [] as [] },
-    };
+    const payload = this.views.panel();
     const previous = this.nexus.repository.get<{ channelId: string; messageId: string }>('panel');
     if (previous && previous.channelId !== channel.id) {
       try {
@@ -167,13 +156,7 @@ export class Controller {
           const old = await oldChannel.messages.fetch(previous.messageId);
           if (old.author.id !== this.gateway.client.user!.id)
             throw new DomainError('configuration');
-          await old.edit({
-            content: `${fr('panelMoved')}\n${en('panelMoved')}\n<#${channel.id}>`,
-            embeds: [],
-            components: [],
-            attachments: [],
-            allowedMentions: { parse: [] },
-          });
+          await old.edit(editView(this.views.movedPanel(channel.id)));
         }
       } catch (error) {
         if (
@@ -191,7 +174,7 @@ export class Controller {
         const existing = await channel.messages.fetch(previous.messageId);
         if (existing.author.id !== this.gateway.client.user!.id)
           throw new DomainError('configuration');
-        message = await existing.edit({ ...payload, attachments: [] });
+        message = await existing.edit(editView(payload));
       } catch (error) {
         if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 10008)
           throw error;
@@ -281,9 +264,10 @@ export class Controller {
       deferred: i.deferred,
       replied: i.replied,
     });
-    const respond = async (payload: InteractionEditReplyOptions) => {
+    let s: Session | undefined;
+    const respond = async (payload: View) => {
       phase = 'edit_reply';
-      await i.editReply(payload);
+      await i.editReply(editView(payload));
       phase = 'handle';
     };
     try {
@@ -294,7 +278,6 @@ export class Controller {
       if ('customId' in i && parts[0] !== 'nx' && parts[0] !== 'nxm') return;
       const action = parts[1] || '';
       const token = parts[2];
-      let s: Session | undefined;
       if (token) s = ownedSession(this.nexus.repository, actor.id, token);
       if (i.isButton() && ['propose', 'search', 'manual', 'notify', 'amend'].includes(action)) {
         const data = s || session(this.nexus.repository, actor.id, 'entry', {});
@@ -305,10 +288,21 @@ export class Controller {
           phase = 'show_modal';
           acknowledgementAttempted = true;
           await i.showModal(
-            this.modal(`nxm:amend:${data.id}`, t('amend'), [
-              { id: 'name', label: t('query'), value: p.name },
-              { id: 'url', label: t('officialUrl'), value: p.url, max: 500 },
-            ]),
+            this.modal(
+              `nxm:amend:${data.id}`,
+              t('amend'),
+              [
+                { id: 'name', label: t('query'), description: t('gameNameHint'), value: p.name },
+                {
+                  id: 'url',
+                  label: t('officialUrl'),
+                  description: t('officialLinkHint'),
+                  value: p.url,
+                  max: 500,
+                },
+              ],
+              `${t('amendModalHelp')}\n\n${t('modalBackHint')}`,
+            ),
           );
           return;
         }
@@ -316,19 +310,30 @@ export class Controller {
           phase = 'show_modal';
           acknowledgementAttempted = true;
           await i.showModal(
-            this.modal(`nxm:manual:${data.id}`, t('request'), [
-              {
-                id: 'name',
-                label: t('query'),
-                value:
-                  typeof data.data.name === 'string'
-                    ? data.data.name
-                    : typeof data.data.query === 'string'
-                      ? data.data.query
-                      : undefined,
-              },
-              { id: 'url', label: t('officialUrl'), max: 500 },
-            ]),
+            this.modal(
+              `nxm:manual:${data.id}`,
+              t('request'),
+              [
+                {
+                  id: 'name',
+                  label: t('query'),
+                  description: t('gameNameHint'),
+                  value:
+                    typeof data.data.name === 'string'
+                      ? data.data.name
+                      : typeof data.data.query === 'string'
+                        ? data.data.query
+                        : undefined,
+                },
+                {
+                  id: 'url',
+                  label: t('officialUrl'),
+                  description: t('officialLinkHint'),
+                  max: 500,
+                },
+              ],
+              `${t('requestModalHelp')}\n\n${t('modalBackHint')}`,
+            ),
           );
           return;
         }
@@ -337,9 +342,20 @@ export class Controller {
           phase = 'show_modal';
           acknowledgementAttempted = true;
           await i.showModal(
-            this.modal(`nxm:notify:${data.id}`, t('notify'), [
-              { id: 'message', label: t('notificationText'), max: 1000, paragraph: true },
-            ]),
+            this.modal(
+              `nxm:notify:${data.id}`,
+              t('notify'),
+              [
+                {
+                  id: 'message',
+                  label: t('notificationText'),
+                  description: t('notifyFieldHint'),
+                  max: 1000,
+                  paragraph: true,
+                },
+              ],
+              `${t('notifyModalHelp')}\n\n${t('modalBackHint')}`,
+            ),
           );
           return;
         }
@@ -348,8 +364,16 @@ export class Controller {
         await i.showModal(
           this.modal(
             `nxm:${action === 'propose' ? 'catalogue' : 'search'}:${data.id}`,
-            t('search'),
-            [{ id: 'query', label: t('query') }],
+            t(action === 'propose' ? 'addGame' : 'search'),
+            [
+              {
+                id: 'query',
+                label: t('query'),
+                description: t('gameNameHint'),
+                value: typeof data.data.query === 'string' ? data.data.query : undefined,
+              },
+            ],
+            `${t(action === 'propose' ? 'addSearchModalHelp' : 'searchModalHelp')}\n\n${t('modalBackHint')}`,
           ),
         );
         return;
@@ -359,6 +383,12 @@ export class Controller {
       if (i.isButton() || i.isStringSelectMenu()) {
         if (s) await i.deferUpdate();
         else await i.deferReply({ flags: MessageFlags.Ephemeral });
+      } else if (
+        i.isModalSubmit() &&
+        i.isFromMessage() &&
+        i.message.flags.has(MessageFlags.Ephemeral)
+      ) {
+        await i.deferUpdate();
       } else await i.deferReply({ flags: MessageFlags.Ephemeral });
       this.log.debug({ event: 'interaction_acknowledged', ...context() });
       phase = 'handle';
@@ -373,7 +403,7 @@ export class Controller {
       }
       if (i.isChatInputCommand()) {
         if (i.commandName === 'nexus') {
-          await respond(this.views.browse(actor, language));
+          await respond(this.views.home(actor, language));
           return;
         }
         if (i.commandName === 'nexus-admin') {
@@ -392,10 +422,9 @@ export class Controller {
             i.fields.getTextInputValue('name'),
             i.fields.getTextInputValue('url'),
           );
-          await respond({
-            ...this.views.proposal(actor, language, p),
-            content: t('requestUpdated'),
-          });
+          await respond(
+            this.views.proposal(actor, language, p, destination(s), t('requestUpdated')),
+          );
           return;
         }
         if (action === 'manual') {
@@ -405,10 +434,15 @@ export class Controller {
             i.fields.getTextInputValue('url'),
             language,
           );
-          await respond({
-            ...this.views.proposal(actor, language, proposal),
-            content: t('requestRecorded', { game: proposal.name }),
-          });
+          await respond(
+            this.views.proposal(
+              actor,
+              language,
+              proposal,
+              { kind: 'proposals', admin: false, page: 0 },
+              t('requestRecorded', { game: escapeMarkdown(proposal.name) }),
+            ),
+          );
           return;
         }
         if (action === 'notify') {
@@ -418,7 +452,13 @@ export class Controller {
             i.fields.getTextInputValue('message'),
           );
           await respond(
-            this.views.game(actor, language, string(s, 'gameId'), t('notificationSent')),
+            this.views.game(
+              actor,
+              language,
+              string(s, 'gameId'),
+              t('notificationSent'),
+              destination(s),
+            ),
           );
           return;
         }
@@ -436,7 +476,9 @@ export class Controller {
                 g.aliases.some((a) => normalize(a) === normalize(query)),
             );
           if (local.length === 1) {
-            await respond(this.views.game(actor, language, local[0]!.id));
+            await respond(
+              this.views.game(actor, language, local[0]!.id, t('gameAlreadyHere'), destination(s)),
+            );
             return;
           }
           const key = `search:${actor.id}`;
@@ -446,38 +488,63 @@ export class Controller {
           this.nexus.repository.set(key, [...active, Date.now()]);
           try {
             const candidates = await this.nexus.catalogue.search(query);
-            await respond(this.views.candidates(actor, language, query, candidates));
+            await respond(
+              this.views.candidates(actor, language, query, candidates, undefined, destination(s)),
+            );
           } catch (error) {
             if (!(error instanceof DomainError)) throw error;
-            await respond(this.views.candidates(actor, language, query, [], t(error.code)));
+            await respond(
+              this.views.candidates(actor, language, query, [], t(error.code), destination(s)),
+            );
           }
           return;
         }
         throw new DomainError('invalidInput');
       }
-      if (!s) {
-        if (action === 'games' || action === 'archives' || action === 'notifications')
-          await respond(
-            this.views.browse(
-              actor,
-              language,
-              action === 'archives' ? 'archived' : action === 'games' ? 'active' : 'subscribed',
-            ),
-          );
-        else throw new DomainError('invalidInput');
+      if (action === 'home') {
+        await respond(this.views.home(actor, language));
+        return;
+      }
+      if (['games', 'archives', 'notifications'].includes(action)) {
+        await respond(
+          this.views.browse(
+            actor,
+            language,
+            action === 'archives' ? 'archived' : action === 'games' ? 'active' : 'subscribed',
+          ),
+        );
+        return;
+      }
+      if (!s) throw new DomainError('invalidInput');
+      if (action.startsWith('browse-') || action === 'clear') {
+        if (s.kind !== 'browse') throw new DomainError('invalidInput');
+        const mode = action === 'clear' ? (s.data.mode as Mode) : (action.slice(7) as Mode);
+        if (!['active', 'archived', 'all', 'subscribed'].includes(mode))
+          throw new DomainError('invalidInput');
+        await respond(
+          this.views.browse(
+            actor,
+            language,
+            mode,
+            0,
+            action === 'clear' ? '' : String(s.data.query || ''),
+          ),
+        );
         return;
       }
       if (i.isStringSelectMenu()) {
         const selected = i.values[0];
         if (!selected) throw new DomainError('invalidInput');
         if (action === 'filter' && ['active', 'archived', 'all', 'subscribed'].includes(selected)) {
-          await respond(this.views.browse(actor, language, selected as Mode));
+          await respond(
+            this.views.browse(actor, language, selected as Mode, 0, String(s.data.query || '')),
+          );
           return;
         }
         if (action === 'game') {
           if (s.kind !== 'browse' || !(s.data.ids as string[]).includes(selected))
             throw new DomainError('invalidInput');
-          await respond(this.views.game(actor, language, selected));
+          await respond(this.views.game(actor, language, selected, undefined, destination(s)));
           return;
         }
         if (action === 'candidate') {
@@ -486,22 +553,32 @@ export class Controller {
             throw new DomainError('invalidInput');
           const existing = this.nexus.repository.byRawg(id);
           if (existing) {
-            await respond(this.views.game(actor, language, existing.id));
+            await respond(
+              this.views.game(actor, language, existing.id, t('gameAlreadyHere'), destination(s)),
+            );
             return;
           }
           const candidate = await this.nexus.catalogue.get(id);
           const asset = await this.nexus.catalogue.image(candidate).catch(() => null);
           if (asset) this.nexus.repository.saveAsset(asset);
           await respond(
-            this.views.candidate(actor, language, candidate, asset?.id || null, string(s, 'query')),
+            this.views.candidate(
+              actor,
+              language,
+              candidate,
+              asset?.id || null,
+              string(s, 'query'),
+              destination(s),
+            ),
           );
           return;
         }
         if (action === 'proposal') {
-          if (!(s.data.ids as string[]).includes(selected)) throw new DomainError('invalidInput');
+          if (s.kind !== 'proposals' || !(s.data.ids as string[]).includes(selected))
+            throw new DomainError('invalidInput');
           const p = this.nexus.repository.proposal(selected);
           if (!p) throw new DomainError('notFound');
-          await respond(this.views.proposal(actor, language, p));
+          await respond(this.views.proposal(actor, language, p, destination(s)));
           return;
         }
         throw new DomainError('invalidInput');
@@ -510,12 +587,41 @@ export class Controller {
         if (s.kind !== 'candidate') throw new DomainError('invalidInput');
         const query = string(s, 'query');
         await respond(
-          this.views.candidates(actor, language, query, await this.nexus.catalogue.search(query)),
+          this.views.candidates(
+            actor,
+            language,
+            query,
+            await this.nexus.catalogue.search(query),
+            undefined,
+            destination(s),
+          ),
         );
         return;
       }
       if (action === 'back') {
-        await respond(this.views.browse(actor, language));
+        await respond(
+          this.returnView(
+            actor,
+            language,
+            s.kind === 'proposals' ? { kind: 'home' } : destination(s),
+          ),
+        );
+        return;
+      }
+      if (action === 'proposal-game') {
+        if (s.kind !== 'proposal') throw new DomainError('invalidInput');
+        const p = this.nexus.repository.proposal(string(s, 'proposalId'));
+        if (!p || (p.actorId !== actor.id && !actor.admin)) throw new DomainError('forbidden');
+        if (!p.gameId) throw new DomainError('notFound');
+        const parent = destination(s);
+        await respond(
+          this.views.game(actor, language, p.gameId, undefined, {
+            kind: 'proposal',
+            id: p.id,
+            admin: parent.kind === 'proposals' && parent.admin,
+            page: parent.kind === 'proposals' ? parent.page : 0,
+          }),
+        );
         return;
       }
       if (action === 'requests' || action === 'admin') {
@@ -538,19 +644,35 @@ export class Controller {
       if (action === 'create') {
         if (s.kind !== 'candidate') throw new DomainError('invalidInput');
         const game = await this.nexus.create(actor, Number(s.data.rawgId));
-        await respond(this.views.game(actor, language, game.id, t('created', { game: game.name })));
+        await respond(
+          this.views.game(
+            actor,
+            language,
+            game.id,
+            t('created', { game: escapeMarkdown(game.name) }),
+            destination(s),
+          ),
+        );
         return;
       }
       if (s.kind !== 'game') throw new DomainError('invalidInput');
       const id = string(s, 'gameId');
       if (action === 'activate') {
         const game = await this.nexus.activate(actor, id);
-        await respond(this.views.game(actor, language, id, t('activated', { game: game.name })));
+        await respond(
+          this.views.game(
+            actor,
+            language,
+            id,
+            t('activated', { game: escapeMarkdown(game.name) }),
+            destination(s),
+          ),
+        );
         return;
       }
       if (action === 'subscribe' || action === 'unsubscribe') {
         await this.nexus.subscribe(actor, id, action === 'subscribe');
-        await respond(this.views.game(actor, language, id));
+        await respond(this.views.game(actor, language, id, undefined, destination(s)));
         return;
       }
       throw new DomainError('invalidInput');
@@ -563,53 +685,58 @@ export class Controller {
       // A failed acknowledgement has an uncertain/expired token. Never send a second callback.
       if (unavailableResponse(error) || (acknowledgementAttempted && !i.deferred && !i.replied))
         return;
-      const content = t(key, error instanceof DomainError ? error.values : {});
-      const components =
-        key === 'expired'
-          ? [
-              new ActionRowBuilder<ButtonBuilder>().addComponents(
-                new ButtonBuilder()
-                  .setCustomId('nx:games')
-                  .setLabel(t('reopenCatalogue'))
-                  .setStyle(ButtonStyle.Primary),
-              ),
-            ]
-          : [];
       try {
-        if (i.deferred || i.replied)
-          await i.editReply({
-            content,
-            embeds: [],
-            components,
-            attachments: [],
-            allowedMentions: { parse: [] },
-          });
+        const payload = this.views.feedback(
+          language,
+          t(key, error instanceof DomainError ? error.values : {}),
+          true,
+          !['forbidden', 'adminOnly'].includes(key),
+          s,
+        );
+        if (i.deferred || i.replied) await i.editReply(editView(payload));
         else
           await i.reply({
-            content,
-            components,
-            flags: MessageFlags.Ephemeral,
-            allowedMentions: { parse: [] },
+            ...payload,
+            flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
           });
       } catch (err) {
         this.log.warn({ event: 'interaction_error_response_failed', ...context(), err });
       }
     }
   }
+  private returnView(actor: Actor, language: ReturnType<typeof locale>, target: Destination): View {
+    if (target.kind === 'home') return this.views.home(actor, language);
+    if (target.kind === 'browse')
+      return this.views.browse(actor, language, target.mode, target.page, target.query);
+    if (target.kind === 'proposals')
+      return this.views.proposals(actor, language, target.admin, target.page);
+    const p = this.nexus.repository.proposal(target.id);
+    if (!p) throw new DomainError('notFound');
+    return this.views.proposal(actor, language, p, {
+      kind: 'proposals',
+      admin: target.admin,
+      page: target.page,
+    });
+  }
   private async admin(i: ChatInputCommandInteraction, actor: Actor): Promise<void> {
-    const t = translator(locale(i.locale));
+    const language = locale(i.locale);
+    const t = translator(language);
+    const respond = async (payload: View | string) =>
+      i.editReply(
+        editView(typeof payload === 'string' ? this.views.feedback(language, payload) : payload),
+      );
     const sub = i.options.getSubcommand();
     if (sub === 'setup') {
       await this.installPanel(i.options.getChannel('channel')?.id);
-      await i.editReply(t('panelInstalled'));
+      await respond(t('panelInstalled'));
       return;
     }
     if (sub === 'proposals') {
-      await i.editReply(this.views.proposals(actor, locale(i.locale), true));
+      await respond(this.views.proposals(actor, locale(i.locale), true));
       return;
     }
     if (sub === 'status') {
-      await i.editReply(
+      await respond(
         t('adminStatus', {
           games: this.nexus.repository.games().length,
           pending: this.nexus.repository
@@ -624,14 +751,14 @@ export class Controller {
     }
     if (sub === 'reconcile') {
       await this.nexus.synchronize();
-      await i.editReply(t('saved'));
+      await respond(t('saved'));
       return;
     }
     if (sub === 'reject' || sub === 'clarify') {
       await (
         sub === 'reject' ? this.nexus.reject.bind(this.nexus) : this.nexus.clarify.bind(this.nexus)
       )(actor, i.options.getString('proposal', true), i.options.getString('reason', true));
-      await i.editReply(t('saved'));
+      await respond(t('saved'));
       return;
     }
     if (sub === 'approve') {
@@ -647,7 +774,7 @@ export class Controller {
       if (!asset) throw new DomainError('invalidImage');
       const requester = await this.gateway.actor(p.actorId);
       const game = await this.nexus.approve(actor, requester, p.id, asset, parent || undefined);
-      await i.editReply(this.views.game(actor, locale(i.locale), game.id));
+      await respond(this.views.game(actor, locale(i.locale), game.id));
       return;
     }
     const id = i.options.getString('game', true);
@@ -658,7 +785,7 @@ export class Controller {
         i.options.getChannel('channel', true).id,
         i.options.getRole('role', true).id,
       );
-      await i.editReply(t('saved'));
+      await respond(t('saved'));
       return;
     }
     if (sub === 'edit')
@@ -675,6 +802,6 @@ export class Controller {
     else if (sub === 'block' || sub === 'unblock')
       await this.nexus.block(actor, id, sub === 'block');
     else throw new DomainError('invalidInput');
-    await i.editReply(t('saved'));
+    await respond(t('saved'));
   }
 }
