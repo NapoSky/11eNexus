@@ -12,7 +12,7 @@ services:
       DATABASE_PATH: /data/nexus.sqlite
       HEALTH_PATH: /data/health.json
     volumes:
-      - nexus-data:/data
+      - ./data:/data
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=32m
@@ -28,6 +28,3 @@ services:
       options:
         max-size: 10m
         max-file: '3'
-
-volumes:
-  nexus-data:
