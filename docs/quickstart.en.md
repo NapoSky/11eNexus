@@ -24,6 +24,8 @@ Discord wins during reconciliation. Manual channel moves, deleted resources and 
 
 Service logs use Pino: `LOG_FORMAT=json` by default, or `LOG_FORMAT=pretty` for readable Docker logs. `LOG_LEVEL=debug` includes interaction acknowledgement timing. Errors retain Discord codes, processing phases and safe source locations without tokens, request bodies or member text. Expired personal menus offer an Open catalogue button. Failed interaction acknowledgements are never retried with a second callback.
 
+Reconciliation applies only subscriber differences in one SQLite transaction and yields to I/O between games. Unchanged subscriptions cause no writes. `reconciliation_started` and `reconciled.elapsedMs` show progress; `event_loop_blocked` reports an event-loop delay of at least one second. Interaction logs distinguish age on receipt (`receivedAgeMs`) from local processing time (`elapsedMs`) and include Gateway latency when known. Calculated interaction age also depends on host clock accuracy.
+
 To update an existing public panel with new buttons, stop the bot, run `docker compose run --rm bot node dist/cli.js setup`, then restart. Setup edits the existing panel message in its current channel. `doctor` exposes catalogue counts under `catalogue.active`, `catalogue.archived` and `catalogue.unavailable`.
 
 Deployment is manual: pull the private repository, make a SQLite backup, then `docker compose up -d --build`. Back up the named volume using the CLI’s online SQLite backup command. Never remove the volume with `down -v`. See the [main guide](../README.md) for restoration and administration.

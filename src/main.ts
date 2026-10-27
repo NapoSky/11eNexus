@@ -6,6 +6,7 @@ import { bootstrap } from './bootstrap.js';
 import { DomainError } from './domain/model.js';
 import { languagesReady } from './presentation/i18n.js';
 import { logger } from './infrastructure/logger.js';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 
 async function main(): Promise<void> {
   await languagesReady;
@@ -18,6 +19,8 @@ async function main(): Promise<void> {
   let lastSync = 0;
   let busy = false;
   let syncing: Promise<void> = Promise.resolve();
+  const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+  loopDelay.enable();
   const health = (ready: boolean) => {
     mkdirSync(dirname(settings.healthPath), { recursive: true });
     const temporary = `${settings.healthPath}.${owner}`;
@@ -25,6 +28,10 @@ async function main(): Promise<void> {
     renameSync(temporary, settings.healthPath);
   };
   const heartbeat = setInterval(() => {
+    const maxDelayMs = Math.round(loopDelay.max / 1e6);
+    if (maxDelayMs >= 1000)
+      logger.warn({ event: 'event_loop_blocked', maxDelayMs, reconciliationRunning: busy });
+    loopDelay.reset();
     if (!repository.acquireLease(owner, Date.now())) {
       logger.error({ event: 'lease_lost' });
       void stop(1);
@@ -42,6 +49,7 @@ async function main(): Promise<void> {
     if (stopping) return;
     stopping = true;
     if (scheduler) clearInterval(scheduler);
+    loopDelay.disable();
     health(false);
     await client.destroy();
     await syncing;
@@ -67,6 +75,8 @@ async function main(): Promise<void> {
   const synchronize = async () => {
     if (busy || stopping || !client.isReady()) return;
     busy = true;
+    const startedAt = performance.now();
+    logger.info({ event: 'reconciliation_started' });
     try {
       await app.nexus.synchronize();
       repository.maintain(Date.now());
@@ -75,6 +85,7 @@ async function main(): Promise<void> {
       const games = repository.games();
       logger.info({
         event: 'reconciled',
+        elapsedMs: Math.round(performance.now() - startedAt),
         games: games.length,
         active: games.filter((g) => g.state === 'active').length,
         archived: games.filter((g) => g.state === 'archived').length,
@@ -83,6 +94,7 @@ async function main(): Promise<void> {
     } catch (error) {
       logger.error({
         event: 'reconciliation_failed',
+        elapsedMs: Math.round(performance.now() - startedAt),
         code: error instanceof DomainError ? error.code : 'discordError',
         err: error,
       });

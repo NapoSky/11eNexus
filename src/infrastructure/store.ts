@@ -77,8 +77,24 @@ export class Store implements Repository {
     else this.db.prepare('DELETE FROM subscriptions WHERE game_id=? AND user_id=?').run(id, user);
   }
   replaceSubscribers(id: string, users: string[]): void {
-    this.db.prepare('DELETE FROM subscriptions WHERE game_id=?').run(id);
-    for (const user of new Set(users)) this.subscribe(id, user, true);
+    const current = new Set(this.subscribers(id));
+    const desired = new Set(users);
+    const removed = [...current].filter((user) => !desired.has(user));
+    const added = [...desired].filter((user) => !current.has(user));
+    if (!removed.length && !added.length) return;
+    // One commit for the delta; SAVEPOINT also works inside an existing transaction.
+    // Rewriting unchanged subscribers used to perform hundreds of blocking disk commits.
+    this.db.exec('SAVEPOINT replace_subscribers');
+    try {
+      const remove = this.db.prepare('DELETE FROM subscriptions WHERE game_id=? AND user_id=?');
+      const add = this.db.prepare('INSERT INTO subscriptions VALUES (?,?)');
+      for (const user of removed) remove.run(id, user);
+      for (const user of added) add.run(id, user);
+      this.db.exec('RELEASE replace_subscribers');
+    } catch (error) {
+      this.db.exec('ROLLBACK TO replace_subscribers; RELEASE replace_subscribers');
+      throw error;
+    }
   }
   asset(id: string): Asset | null {
     const row = this.db.prepare('SELECT * FROM assets WHERE id=?').get(id);

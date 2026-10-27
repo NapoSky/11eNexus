@@ -19,6 +19,7 @@ import {
   type Clock,
   type Community,
   type Repository,
+  type Scheduler,
   type World,
 } from './ports.js';
 
@@ -37,6 +38,7 @@ export class Nexus {
     readonly catalogue: Catalogue,
     readonly policy: Policy,
     private readonly clock: Clock = { now: () => Date.now() },
+    private readonly scheduler: Scheduler = { yield: async () => {} },
   ) {}
   private now(): number {
     return this.clock.now();
@@ -566,6 +568,7 @@ export class Nexus {
       for (const op of this.repository
         .operations()
         .filter((o) => o.status === 'pending' || o.status === 'review')) {
+        await this.scheduler.yield();
         const game = this.repository.game(op.gameId);
         if (!game) continue;
         if (op.kind === 'create') {
@@ -631,6 +634,8 @@ export class Nexus {
       }
       const trusted = new Set<string>();
       for (const game of this.repository.games()) {
+        // Let Gateway interaction callbacks run between background reconciliation items.
+        await this.scheduler.yield();
         const channel = world.channels.find((c) => c.id === game.channelId);
         if (!channel) {
           game.state = 'unavailable';

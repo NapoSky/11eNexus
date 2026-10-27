@@ -1,4 +1,6 @@
 import { DAY, type Operation } from '../src/domain/model.js';
+import { Nexus } from '../src/application/nexus.js';
+import { setImmediate as yieldToIO } from 'node:timers/promises';
 import {
   activeId,
   admin,
@@ -16,6 +18,18 @@ beforeEach(() => {
   f = fixture();
 });
 afterEach(() => f.repository.close());
+test('background reconciliation lets I/O callbacks run while processing archived games', async () => {
+  for (let i = 0; i < 20; i++) f.add(game({ state: 'archived' }));
+  const incomingCallback = jest.fn();
+  setImmediate(incomingCallback);
+  const nexus = new Nexus(f.repository, f.community, f.catalogue, f.nexus.policy, f.clock, {
+    yield: () => yieldToIO(),
+  });
+  await nexus.synchronize(false);
+  expect(incomingCallback).toHaveBeenCalled();
+  expect(f.repository.games()).toHaveLength(20);
+  expect(f.community.move).not.toHaveBeenCalled();
+});
 test('a creation has a visible channel and role without subscribing or mentioning anyone', async () => {
   const g = await f.nexus.create(member, 123);
   expect(g.state).toBe('active');

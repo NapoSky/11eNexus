@@ -256,6 +256,10 @@ export class Controller {
     const language = locale(i.locale);
     const t = translator(language);
     const startedAt = Date.now();
+    const receivedAgeMs =
+      typeof i.createdTimestamp === 'number'
+        ? Math.max(0, startedAt - i.createdTimestamp)
+        : undefined;
     const actionName = 'customId' in i ? i.customId.split(':')[1] || '' : '';
     let phase = 'authorize';
     let acknowledgementAttempted = false;
@@ -268,6 +272,8 @@ export class Controller {
           : 'unknown',
       phase,
       elapsedMs: Date.now() - startedAt,
+      receivedAgeMs,
+      gatewayPingMs: this.gateway.client.ws.ping >= 0 ? this.gateway.client.ws.ping : undefined,
       interactionAgeMs:
         typeof i.createdTimestamp === 'number'
           ? Math.max(0, Date.now() - i.createdTimestamp)

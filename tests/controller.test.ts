@@ -185,6 +185,7 @@ test.each([10062, 40060, 50027])(
         phase: 'acknowledge',
         action: 'games',
         interactionAgeMs: expect.any(Number),
+        receivedAgeMs: expect.any(Number),
         err: error,
       }),
     );

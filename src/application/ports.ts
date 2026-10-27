@@ -82,6 +82,9 @@ export interface Catalogue {
 export interface Clock {
   now(): number;
 }
+export interface Scheduler {
+  yield(): Promise<void>;
+}
 export class Mutex {
   private tail: Promise<void> = Promise.resolve();
   async run<T>(task: () => Promise<T>): Promise<T> {

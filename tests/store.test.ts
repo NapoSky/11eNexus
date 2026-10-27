@@ -33,6 +33,40 @@ test('a failed transaction rolls back all subscriber changes', () => {
   ).toThrow('abort');
   expect(store.subscribers(g.id)).toEqual([member.id]);
 });
+test('an unchanged Discord subscriber snapshot performs no writes, including duplicate or reordered IDs', () => {
+  const g = game();
+  store.saveGame(g);
+  store.replaceSubscribers(g.id, ['one', 'two']);
+  const before = store.db.prepare('SELECT total_changes() AS changes').get()!.changes;
+  store.replaceSubscribers(g.id, ['two', 'one', 'two']);
+  expect(store.db.prepare('SELECT total_changes() AS changes').get()!.changes).toBe(before);
+  expect(store.subscribers(g.id)).toEqual(['one', 'two']);
+});
+test('a changed Discord snapshot only adds and removes the necessary subscribers', () => {
+  const g = game();
+  store.saveGame(g);
+  store.replaceSubscribers(g.id, ['keep', 'remove']);
+  const before = Number(store.db.prepare('SELECT total_changes() AS changes').get()!.changes);
+  store.replaceSubscribers(g.id, ['keep', 'add']);
+  const after = Number(store.db.prepare('SELECT total_changes() AS changes').get()!.changes);
+  expect(after - before).toBe(2);
+  expect(store.subscribers(g.id)).toEqual(['add', 'keep']);
+});
+test('a failed subscriber delta restores the old snapshot while its outer transaction may continue', () => {
+  const g = game();
+  store.saveGame(g);
+  store.replaceSubscribers(g.id, ['old']);
+  store.db.exec(
+    "CREATE TRIGGER reject_subscriber BEFORE INSERT ON subscriptions WHEN NEW.user_id='fail' BEGIN SELECT RAISE(ABORT, 'rejected'); END;",
+  );
+  store.transaction(() => {
+    expect(() => store.replaceSubscribers(g.id, ['new', 'fail'])).toThrow('rejected');
+    expect(store.subscribers(g.id)).toEqual(['old']);
+    store.audit('outer-transaction-continues', null, g.id, now);
+  });
+  expect(store.subscribers(g.id)).toEqual(['old']);
+  expect(store.db.prepare('SELECT COUNT(*) AS count FROM audit').get()!.count).toBe(1);
+});
 test('images and owner-bound sessions survive a database reopen', () => {
   store.saveAsset(asset);
   store.saveSession({
