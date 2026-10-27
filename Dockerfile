@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-bookworm-slim AS dependencies
+FROM node:26-bookworm-slim AS dependencies
 WORKDIR /app
 RUN npm install --global pnpm@12.14.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -15,7 +15,7 @@ RUN pnpm check && pnpm format:check
 FROM dependencies AS production-dependencies
 RUN pnpm prune --prod
 
-FROM node:24-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 ENV NODE_ENV=production DATABASE_PATH=/data/nexus.sqlite HEALTH_PATH=/data/health.json
 WORKDIR /app
 COPY --from=production-dependencies /app/node_modules ./node_modules
