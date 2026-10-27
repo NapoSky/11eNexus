@@ -2,7 +2,7 @@
 
 Bot Discord communautaire FR/EN : des salons de jeux visibles selon leur activité, des notifications facultatives et des archives cachées conservant l’historique.
 
-Node 24 · TypeScript 7 · discord.js · i18next · SQLite intégré à Node · Jest/SWC. Hébergement personnel avec Docker Compose, déploiement manuel. Aucun service payant requis. [English quick start](docs/quickstart.en.md).
+Node 24 / Docker Node 26 · TypeScript 7 · discord.js · i18next · SQLite intégré à Node · Jest/SWC. Hébergement personnel avec Docker Compose, déploiement manuel. Aucun service payant requis. [English quick start](docs/quickstart.en.md).
 
 ## Fonctionnement
 
@@ -34,7 +34,7 @@ Sans `--apply`, `role-mentions` affiche uniquement les changements prévus. Tous
 
 ## Installation
 
-1. Utiliser Node **24.22.1 minimum, branche 24** et pnpm **12.14.0**, ou directement Docker Compose v2. Le Dockerfile suit `node:24-bookworm-slim`, avec récupération de la base récente au build.
+1. Utiliser Node **24.22.1 minimum sur la branche 24**, ou **Node 26**, avec pnpm **12.14.0** ; Docker Compose v2 est également disponible. La CI utilise Node 24 ; le Dockerfile suit `node:26-bookworm-slim`, avec récupération de la base récente au build.
 2. Copier `.env.example` vers `.env`, renseigner `BOT_TOKEN`, `GUILD_ID`, `RAWG_API_KEY`, vérifier les rôles et catégories, puis protéger le fichier (`chmod 600 .env`). Un `.env` local déjà présent doit être conservé.
 3. Dans le Developer Portal Discord, activer **Server Members Intent**. `Message Content Intent` n’est pas utilisé. Installer l’application avec les scopes `bot` et `applications.commands`.
 4. Placer le rôle du bot **au-dessus des rôles de jeux à importer**. Permissions : gérer salons et rôles, voir les salons, lire l’historique, envoyer des messages, joindre fichiers, intégrer liens, gérer les fils pour inspecter les fils privés et mentionner les rôles. La modification du questionnaire nécessite aussi gérer le serveur et gérer les rôles. Le bot doit voir les archives et le salon admin.
