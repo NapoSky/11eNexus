@@ -26,6 +26,8 @@ import { renderImportReview, renderImportSummary } from './presentation/import-r
 import { adminDiagnostic } from './infrastructure/admin-diagnostics.js';
 import { enableRoleMentions } from './application/role-mentions.js';
 import { logger } from './infrastructure/logger.js';
+import { collectResourceAudit } from './application/resource-audit.js';
+import { renderResourceAudit } from './presentation/resource-audit.js';
 
 let stage = 'initialization';
 
@@ -41,7 +43,7 @@ async function main(): Promise<void> {
   const command = process.argv[2];
   if (!command || command === 'help') {
     console.info(
-      '11eNexus admin: doctor | inventory --output FILE | prepare --inventory FILE --output FILE [--rawg] [--locale fr|en] | plan --manifest FILE --output FILE | apply --plan FILE --apply | role-mentions [--apply] | setup [--channel ID] | backup --output FILE',
+      '11eNexus admin: doctor | audit --output FILE [--role-marker ID] [--categories ID,ID] [--locale fr|en] | inventory --output FILE | prepare --inventory FILE --output FILE [--rawg] [--locale fr|en] | plan --manifest FILE --output FILE | apply --plan FILE --apply | role-mentions [--apply] | setup [--channel ID] | backup --output FILE',
     );
     return;
   }
@@ -141,6 +143,50 @@ async function main(): Promise<void> {
       app.client.login(app.settings.token),
     ]);
     stage = command;
+    if (command === 'audit') {
+      const target = option('output') || 'data/resource-audit.json';
+      const language = option('locale') || 'fr';
+      const markerRoleId = option('role-marker');
+      const categoryIds = option('categories')
+        ?.split(',')
+        .map((id) => id.trim());
+      if (
+        !target.toLowerCase().endsWith('.json') ||
+        !['fr', 'en'].includes(language) ||
+        (markerRoleId !== undefined && !/^\d{17,20}$/.test(markerRoleId)) ||
+        categoryIds?.some((id) => !/^\d{17,20}$/.test(id))
+      )
+        throw new DomainError('invalidInput');
+      const report = await collectResourceAudit(app.repository, app.gateway, {
+        guildId: app.settings.guildId,
+        activeCategoryId: app.settings.activeCategoryId,
+        markerRoleId,
+        categoryIds,
+      });
+      output(target, report);
+      const markdown = target.replace(/\.json$/i, '.md');
+      writeFileSync(markdown, renderResourceAudit(report, language as 'fr' | 'en'), {
+        mode: 0o600,
+      });
+      console.info(
+        JSON.stringify(
+          {
+            complete: report.complete,
+            catalogueGames: report.catalogueGames,
+            untrackedRoles: report.roles.filter((r) => r.status === 'untracked').length,
+            untrackedChannels: report.channels.filter((r) => r.status === 'untracked').length,
+            nameDifferences: report.nameDifferences.length,
+            report: target,
+            markdown,
+            errors: report.errors,
+          },
+          null,
+          2,
+        ),
+      );
+      if (report.errors.length) process.exitCode = 1;
+      return;
+    }
     if (command === 'role-mentions') {
       const report = await enableRoleMentions(
         app.repository,

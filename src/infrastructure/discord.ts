@@ -118,6 +118,7 @@ export class DiscordCommunity implements Community {
         managed: r.managed,
         permissions: r.permissions.bitfield.toString(),
         mentionable: r.mentionable,
+        position: r.position,
         editable: me.permissions.has(P.ManageRoles) && me.roles.highest.comparePositionTo(r) > 0,
         references: [...channels.values()]
           .filter((c) => c?.permissionOverwrites.cache.has(r.id))

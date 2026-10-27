@@ -41,6 +41,7 @@ export interface RoleObservation {
   mentionable: boolean;
   references: string[];
   editable: boolean;
+  position?: number;
 }
 export interface ChannelObservation {
   id: string;

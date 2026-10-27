@@ -87,6 +87,16 @@ Après une panne, le bot observe Discord avant toute rotation. Les changements m
 
 `/nexus-admin status`, `proposals`, `approve`, `clarify`, `reject`, `reconcile`, `block`, `unblock`, `edit`, `retire` et `repair` assurent l’exploitation. `edit` corrige le titre et les alias du catalogue, sans renommer les ressources Discord. `retire` retire un jeu archivé ou indisponible du catalogue en conservant ses ressources ; cela ne libère pas de place dans les catégories Discord. Libérer des emplacements nécessite une décision admin sur les ressources, leur export ou leur déplacement.
 
+Pour lister les ressources suivies et strictement non suivies, utiliser la base de production :
+
+```sh
+docker compose run --rm bot node dist/cli.js audit --output /data/resource-audit.json
+```
+
+Le rapport est disponible sur l’hôte dans `data/resource-audit.json` et `data/resource-audit.md`. Les rôles ordinaires sous « Jeux réguliers » (`811274814841028611`) sont comparés par ID aux fiches SQLite ; les bots, intégrations et `@everyone` sont exclus. Côté salons, le périmètre par défaut couvre les espaces textuels de la catégorie active et des archives enregistrées. `--role-marker ID`, `--categories ID,ID` et `--locale en` permettent un autre périmètre ou une autre langue. La commande fonctionne pendant que le bot tourne et ne modifie pas Discord.
+
+Les fiches retirées et les opérations inachevées sont distinguées des ressources sans aucune association connue. Le rapport inclut les compteurs d’abonnés, les usages dans les permissions de salons et le questionnaire, les ressources liées hors périmètre, les IDs introuvables et les écarts entre noms Discord et noms du catalogue. Les propositions de noms signalent les noms déjà utilisés ; elles servent de base à un futur script de renommage, sans l’exécuter. Aucun ID individuel d’abonné n’est exporté. Un inventaire incomplet, une base vide, un repère absent ou un changement de catalogue pendant la lecture bloque une conclusion fiable ; relancer l’audit après stabilisation.
+
 Le contrôle de santé échoue si Discord n’est pas prêt ou si les réconciliations n’aboutissent plus. Docker marque alors le service `unhealthy` ; Compose ne redémarre pas automatiquement un processus seulement parce qu’il est `unhealthy`. Examiner les logs et les permissions.
 
 Les logs de service utilisent Pino sur stderr, avec date, niveau, évènement et diagnostics d’erreur. `LOG_FORMAT=json` est le format structuré par défaut ; `LOG_FORMAT=pretty` donne un affichage lisible dans `docker compose logs`. `LOG_LEVEL=debug` ajoute les délais d’acquittement des interactions. Les jetons, corps de requête, textes saisis et messages bruts d’exception ne sont pas journalisés. Les résultats des commandes administratives restent disponibles sur stdout.
