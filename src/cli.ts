@@ -23,6 +23,9 @@ import {
   LEGACY_STANDBY,
 } from './application/import-preparation.js';
 import { renderImportReview, renderImportSummary } from './presentation/import-review.js';
+import { adminDiagnostic } from './infrastructure/admin-diagnostics.js';
+
+let stage = 'initialization';
 
 function option(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -98,6 +101,7 @@ async function main(): Promise<void> {
     return;
   }
   if (command === 'backup') {
+    stage = 'backup';
     const target = option('output');
     if (!target) throw new DomainError('invalidInput');
     const store = new Store(resolve(process.env.DATABASE_PATH || './data/nexus.sqlite'));
@@ -127,10 +131,12 @@ async function main(): Promise<void> {
         }
       }, 10000);
     }
+    stage = 'discord_login';
     await Promise.all([
       once(app.client, Events.ClientReady, { signal: AbortSignal.timeout(30000) }),
       app.client.login(app.settings.token),
     ]);
+    stage = command;
     if (command === 'doctor') {
       const world = await app.gateway.snapshot();
       console.info(
@@ -168,22 +174,32 @@ async function main(): Promise<void> {
       const file = option('manifest');
       const target = option('output');
       if (!file || !target) throw new DomainError('invalidInput');
-      const manifest = parseManifest(JSON.parse(readFileSync(file, 'utf8')));
+      stage = 'read_manifest';
+      const contents = readFileSync(file, 'utf8');
+      stage = 'parse_manifest';
+      const parsed = JSON.parse(contents);
+      stage = 'validate_manifest';
+      const manifest = parseManifest(parsed);
+      stage = 'discord_snapshot';
+      const world = await app.gateway.snapshot();
+      stage = 'build_plan';
       const initial = buildPlan(
         manifest,
-        await app.gateway.snapshot(),
+        world,
         app.repository,
         app.settings.maxGames,
         app.settings.activeCategoryId,
         app.settings.maxArchives,
         app.settings.roleReserve,
       );
+      stage = 'prepare_icons';
       const plan = await prepareRoleIcons(
         initial,
         app.repository,
         app.gateway,
         app.nexus.catalogue,
       );
+      stage = 'write_plan';
       output(target, plan);
       console.info(JSON.stringify({ changes: plan.changes, errors: plan.errors }, null, 2));
       if (plan.errors.length) process.exitCode = 1;
@@ -218,6 +234,7 @@ main().catch((error) => {
     JSON.stringify({
       event: 'admin_command_failed',
       code: error instanceof DomainError ? error.code : 'configuration_or_discord_error',
+      ...adminDiagnostic(error, stage),
     }),
   );
   process.exitCode = 1;
