@@ -57,6 +57,11 @@ export interface MaintenancePreview {
   unverified: string[];
   report: ResourceAudit;
 }
+export interface MaintenanceProgress {
+  phase: 'waiting' | 'resources' | 'activity';
+  current: number;
+  total: number;
+}
 export class Administration {
   constructor(
     readonly nexus: Nexus,
@@ -206,21 +211,40 @@ export class Administration {
       };
     });
   }
-  async inspect(actor: Actor): Promise<MaintenancePreview> {
+  async inspect(
+    actor: Actor,
+    progress?: (value: MaintenanceProgress) => Promise<void>,
+    signal?: AbortSignal,
+  ): Promise<MaintenancePreview> {
     requireAdmin(actor);
-    return this.nexus.mutex.run(() => this.inspectInternal());
+    signal?.throwIfAborted();
+    await progress?.({ phase: 'waiting', current: 0, total: 0 });
+    signal?.throwIfAborted();
+    return this.nexus.mutex.run(() => this.inspectInternal(progress, signal));
   }
-  private async inspectInternal(): Promise<MaintenancePreview> {
+  private async inspectInternal(
+    progress?: (value: MaintenanceProgress) => Promise<void>,
+    signal?: AbortSignal,
+  ): Promise<MaintenancePreview> {
+    signal?.throwIfAborted();
+    await progress?.({ phase: 'resources', current: 0, total: 0 });
+    signal?.throwIfAborted();
     const { nexus } = this;
     const repo = nexus.repository;
     const world = await nexus.community.snapshot();
+    signal?.throwIfAborted();
     if (!world.complete) throw new DomainError('incomplete');
     const changes: MaintenancePreview['changes'] = [];
     const trusted = new Set<string>();
     const unverified: string[] = [];
     const games: Game[] = [];
-    for (const current of repo.games()) {
+    const catalogue = repo.games();
+    await progress?.({ phase: 'activity', current: 0, total: catalogue.length });
+    let checked = 0;
+    for (const current of catalogue) {
+      signal?.throwIfAborted();
       await this.scheduler.yield();
+      signal?.throwIfAborted();
       const game = { ...current };
       if (
         repo
@@ -234,6 +258,7 @@ export class Administration {
         game.state = 'unavailable';
         changes.push({ name: game.name, kind: 'unavailable' });
         games.push(game);
+        await progress?.({ phase: 'activity', current: ++checked, total: catalogue.length });
         continue;
       }
       game.state =
@@ -275,6 +300,8 @@ export class Administration {
       )
         changes.push({ name: game.name, kind: 'activity' });
       games.push(game);
+      signal?.throwIfAborted();
+      await progress?.({ phase: 'activity', current: ++checked, total: catalogue.length });
     }
     const candidates = archiveCandidates(games, this.now(), nexus.policy.minActive)
       .filter((g) => trusted.has(g.id))

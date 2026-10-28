@@ -56,6 +56,10 @@ function button(customId: string) {
     user: { id: admin.id },
     member: { roles: [gateway.config.adminRoleId] },
     guild: { ownerId: admin.id },
+    message: {
+      id: 'private-message',
+      flags: { has: (flag: number) => flag === MessageFlags.Ephemeral },
+    },
     deferred: false,
     replied: false,
     isAutocomplete: () => false,
@@ -101,7 +105,7 @@ function submit(
     isButton: () => false,
     isModalSubmit: () => true,
     isFromMessage: () => true,
-    message: { flags: { has: (flag: number) => flag === MessageFlags.Ephemeral } },
+    message: i.message,
     fields: { getTextInputValue: (name: string) => fields[name] },
     ...extra,
   };
@@ -627,4 +631,184 @@ test('a blank clarification reason is rejected before rendering an empty Text Di
   expect(log.warn).toHaveBeenCalledWith(
     expect.objectContaining({ code: 'invalidInput', action: 'clarify', page: 'request' }),
   );
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void, reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+test('diagnostic shows immediate waiting, resource and game progress before its final result', async () => {
+  f.add(game());
+  const actorGate = deferred<typeof admin>(),
+    visible = deferred<void>();
+  jest.mocked(gateway.actor).mockReturnValueOnce(actorGate.promise);
+  const i = click(render({ page: 'maintenance' }), 'diagnose');
+  i.editReply.mockImplementation(async (payload) => {
+    assertUniqueCustomIds(payload);
+    visible.resolve();
+  });
+  const pending = controller.handle(i as unknown as Interaction);
+  await visible.promise;
+  expect(JSON.stringify(response(i))).toContain('Vérification en cours');
+  expect(controls(response(i)).find((n) => n.custom_id?.includes(':diagnose:'))?.disabled).toBe(
+    true,
+  );
+  expect(actionId(response(i), 'home', 'na')).toBeDefined();
+  expect(f.community.snapshot).not.toHaveBeenCalled();
+  actorGate.resolve(admin);
+  await pending;
+  const updates = JSON.stringify(i.editReply.mock.calls);
+  expect(updates).toContain('Lecture des salons');
+  expect(updates).toContain('0 / 1 jeux vérifiés');
+  expect(updates).toContain('1 / 1 jeux vérifiés');
+  expect(JSON.stringify(response(i))).toContain('Vérification terminée');
+  expect(controls(response(i)).find((n) => n.custom_id?.includes(':diagnose:'))?.disabled).toBe(
+    false,
+  );
+  expect(f.community.move).not.toHaveBeenCalled();
+});
+test('leaving a running scan stops remaining games and never brings the old diagnostic back', async () => {
+  f.add(game());
+  f.add(
+    game({
+      id: 'second',
+      name: 'Another game',
+      channelId: 'second-channel',
+      roleId: 'second-role',
+    }),
+  );
+  const gate = deferred<{ at: number | null; complete: boolean }>(),
+    entered = deferred<void>();
+  f.community.activity.mockImplementationOnce(async () => {
+    entered.resolve();
+    return gate.promise;
+  });
+  const i = click(render({ page: 'maintenance' }), 'diagnose');
+  const pending = controller.handle(i as unknown as Interaction);
+  await entered.promise;
+  const updates = i.editReply.mock.calls.length;
+  const home = await run(click(response(i), 'home'));
+  expect(actionId(home, 'requests', 'na')).toBeDefined();
+  gate.resolve({ at: null, complete: true });
+  await pending;
+  expect(i.editReply).toHaveBeenCalledTimes(updates);
+  expect(f.community.activity).toHaveBeenCalledTimes(1);
+  expect(log.error).not.toHaveBeenCalled();
+});
+test('a late diagnostic failure cannot replace a more recently opened menu', async () => {
+  const gate = deferred<typeof f.community.world>(),
+    entered = deferred<void>();
+  f.community.snapshot.mockImplementationOnce(async () => {
+    entered.resolve();
+    return gate.promise;
+  });
+  const i = click(render({ page: 'maintenance' }), 'diagnose');
+  const pending = controller.handle(i as unknown as Interaction);
+  await entered.promise;
+  const count = i.editReply.mock.calls.length;
+  const newer = click(response(i), 'home');
+  await run(newer);
+  gate.reject(new Error('private API failure'));
+  await pending;
+  expect(i.editReply).toHaveBeenCalledTimes(count);
+  expect(JSON.stringify(response(newer))).not.toContain('échoué');
+  expect(actionId(response(newer), 'catalogue', 'na')).toBeDefined();
+});
+test('an on-screen diagnostic failure explains retry and keeps navigation available', async () => {
+  f.community.snapshot.mockRejectedValueOnce(new Error('private API failure'));
+  const i = click(render({ page: 'maintenance' }), 'diagnose');
+  const result = await run(i);
+  expect(JSON.stringify(result)).toContain('La vérification a échoué');
+  expect(JSON.stringify(result)).toContain('Tu peux réessayer');
+  expect(JSON.stringify(result)).not.toContain('private API failure');
+  expect(actionId(result, 'home', 'na')).toBeDefined();
+  expect(controls(result).find((n) => n.custom_id?.includes(':diagnose:'))?.disabled).toBe(false);
+  expect(log.error).toHaveBeenCalledWith(
+    expect.objectContaining({ action: 'diagnose', page: 'maintenance' }),
+  );
+});
+test('navigation in another private message does not cancel the first message diagnostic', async () => {
+  const gate = deferred<typeof f.community.world>(),
+    entered = deferred<void>();
+  f.community.snapshot.mockImplementationOnce(async () => {
+    entered.resolve();
+    return gate.promise;
+  });
+  const i = click(render({ page: 'maintenance' }), 'diagnose');
+  const pending = controller.handle(i as unknown as Interaction);
+  await entered.promise;
+  const other = button('na:home');
+  other.message = { ...other.message, id: 'other-private-message' };
+  await run(other);
+  gate.resolve(f.community.world);
+  await pending;
+  expect(JSON.stringify(response(i))).toContain('Vérification terminée');
+  expect(actionId(response(other), 'requests', 'na')).toBeDefined();
+});
+test('a slow in-flight edit finishes before a newer page can edit the same private message', async () => {
+  const gate = deferred<void>(),
+    entered = deferred<void>();
+  const original = render({ page: 'maintenance' }),
+    i = click(original, 'diagnose');
+  i.editReply.mockImplementationOnce(async () => {
+    entered.resolve();
+    await gate.promise;
+  });
+  const pending = controller.handle(i as unknown as Interaction);
+  await entered.promise;
+  const newer = click(original, 'home');
+  const navigation = controller.handle(newer as unknown as Interaction);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(newer.editReply).not.toHaveBeenCalled();
+  gate.resolve();
+  await Promise.all([pending, navigation]);
+  expect(actionId(response(newer), 'requests', 'na')).toBeDefined();
+  expect(f.community.snapshot).not.toHaveBeenCalled();
+});
+
+test('a scan visibly waits for the shared mutex and leaving cancels the queued read', async () => {
+  const gate = deferred<void>(),
+    locked = deferred<void>(),
+    visible = deferred<void>();
+  const background = f.nexus.mutex.run(async () => {
+    locked.resolve();
+    await gate.promise;
+  });
+  await locked.promise;
+  const i = click(render({ page: 'maintenance' }), 'diagnose');
+  i.editReply.mockImplementation(async () => {
+    visible.resolve();
+  });
+  const pending = controller.handle(i as unknown as Interaction);
+  await visible.promise;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(JSON.stringify(response(i))).toContain('attente de la fin des opérations');
+  expect(f.community.snapshot).not.toHaveBeenCalled();
+  await run(click(response(i), 'home'));
+  gate.resolve();
+  await Promise.all([pending, background]);
+  expect(f.community.snapshot).not.toHaveBeenCalled();
+});
+test('returning to a member menu also invalidates an earlier admin diagnostic', async () => {
+  const gate = deferred<typeof f.community.world>(),
+    entered = deferred<void>();
+  f.community.snapshot.mockImplementationOnce(async () => {
+    entered.resolve();
+    return gate.promise;
+  });
+  const i = click(render({ page: 'maintenance' }), 'diagnose');
+  const pending = controller.handle(i as unknown as Interaction);
+  await entered.promise;
+  const count = i.editReply.mock.calls.length;
+  const s = session(f.repository, admin.id, 'browse', {});
+  const memberHome = button(`nx:home:${s.id}`);
+  await run(memberHome);
+  gate.resolve(f.community.world);
+  await pending;
+  expect(i.editReply).toHaveBeenCalledTimes(count);
+  expect(JSON.stringify(response(memberHome))).not.toContain('Vérification en cours');
 });

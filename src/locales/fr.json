@@ -372,5 +372,12 @@
   "a.nextReview": "Tout est renseigné. Ouvre le récapitulatif pour relire et confirmer ; aucun salon ni rôle n’a encore été créé.",
   "proposalExpired": "Expirée",
   "requestHelp_expired": "Cette demande a expiré après 30 jours sans évolution. Tu peux envoyer une nouvelle demande si le jeu t’intéresse toujours.",
-  "a.historyRetention": "Demandes sans évolution : expiration après 30 jours. Historique clôturé : conservation 30 jours."
+  "a.historyRetention": "Demandes sans évolution : expiration après 30 jours. Historique clôturé : conservation 30 jours.",
+  "a.diagnosticRunning": "🔎 Vérification en cours",
+  "a.diagnostic_waiting": "Préparation et attente de la fin des opérations en cours…",
+  "a.diagnostic_resources": "Lecture des salons, rôles et membres…",
+  "a.diagnostic_activity": "Activité : {{current}} / {{total}} jeux vérifiés.",
+  "a.diagnosticLeave": "Tu peux revenir au menu. Quitter cet écran arrête cette vérification ; son résultat ne remplacera pas le menu ouvert.",
+  "a.diagnosticComplete": "✅ Vérification terminée. Les résultats sont affichés ci-dessous.",
+  "a.diagnosticFailed": "La vérification a échoué. Tu peux réessayer avec « Vérifier maintenant » ou revenir au menu. Si le problème persiste, consulte les journaux du bot."
 }

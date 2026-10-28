@@ -72,9 +72,16 @@ const terminal = (err: unknown) =>
   'code' in err &&
   ([10062, 10015, 40060, 50027].includes(Number(err.code)) ||
     err.code === 'InteractionAlreadyReplied');
+interface ReplyState {
+  token: symbol;
+  expiresAt: number;
+  abort: AbortController;
+  writes: Promise<void>;
+}
 export class AdminController {
   readonly views: AdminViews;
   readonly service: Administration;
+  private readonly replies = new Map<string, ReplyState>();
   constructor(
     readonly nexus: Nexus,
     readonly gateway: DiscordCommunity,
@@ -92,6 +99,44 @@ export class AdminController {
       (i.isChatInputCommand() && i.commandName === 'nexus-admin') ||
       ('customId' in i && /^(na:|nam:|nx:admin(?::|$))/.test(i.customId))
     );
+  }
+  private replyKey(i: Interaction): string | undefined {
+    if ('message' in i && i.message?.flags.has(MessageFlags.Ephemeral))
+      return `${i.user.id}:${i.message.id}`;
+    return undefined;
+  }
+  invalidateReply(i: Interaction): void {
+    const key = this.replyKey(i);
+    if (key) this.replies.get(key)?.abort.abort();
+  }
+  private beginReply(i: AdminInteraction) {
+    const now = Date.now();
+    for (const [key, state] of this.replies)
+      if (state.expiresAt <= now) {
+        state.abort.abort();
+        this.replies.delete(key);
+      }
+    const key = this.replyKey(i),
+      existing = key ? this.replies.get(key) : undefined;
+    existing?.abort.abort();
+    const token = Symbol(),
+      abort = new AbortController(),
+      state: ReplyState = existing || { token, abort, expiresAt: now, writes: Promise.resolve() };
+    Object.assign(state, { token, abort, expiresAt: now + 15 * 60000 });
+    if (key) this.replies.set(key, state);
+    const current = () => state.token === token && !abort.signal.aborted;
+    return {
+      signal: abort.signal,
+      current,
+      write: (payload: View): Promise<void> => {
+        const write = state.writes.then(async () => {
+          if (current()) await i.editReply(editView(payload));
+        });
+        // A failed edit must not prevent a newer navigation from displaying its page.
+        state.writes = write.catch(() => {});
+        return write;
+      },
+    };
   }
   private draft(route: AdminRoute): AdminDraft {
     if ('draft' in route) return route.draft;
@@ -369,6 +414,7 @@ export class AdminController {
       s: Session | undefined,
       route: AdminRoute = home,
       actor: Actor | undefined;
+    let replyState: ReturnType<AdminController['beginReply']> | undefined;
     const action = 'customId' in i ? i.customId.split(':')[1] || '' : 'home';
     const context = () => ({
       interactionId: i.id,
@@ -417,7 +463,8 @@ export class AdminController {
     });
     const respond = async (payload: View) => {
       phase = 'edit_reply';
-      await i.editReply(editView(payload));
+      if (replyState) await replyState.write(payload);
+      else await i.editReply(editView(payload));
       phase = 'handle';
     };
     try {
@@ -438,6 +485,7 @@ export class AdminController {
         await i.showModal(this.modal(action, s, route, language));
         return;
       }
+      replyState = this.beginReply(i);
       phase = 'acknowledge';
       attempted = true;
       if (
@@ -447,6 +495,13 @@ export class AdminController {
         await i.deferUpdate();
       else await i.deferReply({ flags: MessageFlags.Ephemeral });
       this.log.debug({ event: 'admin_interaction_acknowledged', ...context() });
+      if (action === 'diagnose' && route.page === 'maintenance')
+        await respond(
+          this.views.render(actor, language, {
+            page: 'maintenance',
+            progress: { phase: 'waiting', current: 0, total: 0 },
+          }),
+        );
       phase = 'authorize_fresh';
       actor = await this.gateway.actor(i.user.id);
       requireAdmin(actor);
@@ -658,7 +713,27 @@ export class AdminController {
           route = { ...route, channelId: value, channelName: channel.name };
         } else throw new DomainError('invalidInput');
       } else if (action === 'diagnose') {
-        route = { page: 'maintenance', preview: await this.service.inspect(actor), index: 0 };
+        if (route.page !== 'maintenance') throw new DomainError('invalidInput');
+        route = { page: 'maintenance' };
+        let lastPhase = 'waiting',
+          lastProgressAt = Date.now();
+        const preview = await this.service.inspect(
+          actor,
+          async (progress) => {
+            replyState!.signal.throwIfAborted();
+            if (
+              progress.phase !== lastPhase ||
+              (progress.phase === 'activity' && progress.current === progress.total) ||
+              Date.now() - lastProgressAt >= 2000
+            ) {
+              lastPhase = progress.phase;
+              lastProgressAt = Date.now();
+              await respond(this.views.render(actor!, language, { page: 'maintenance', progress }));
+            }
+          },
+          replyState.signal,
+        );
+        route = { page: 'maintenance', preview, index: 0 };
       } else if (action === 'reconcile' || action === 'rotate') {
         if (route.page !== 'maintenance' || !route.preview) throw new DomainError('invalidInput');
         route = await this.review(actor, route, { kind: action }, language);
@@ -791,6 +866,10 @@ export class AdminController {
       } else throw new DomainError('invalidInput');
       await respond(this.views.render(actor, language, route));
     } catch (err) {
+      if (replyState?.signal.aborted && err === replyState.signal.reason) {
+        this.log.debug({ event: 'admin_diagnostic_cancelled', ...context() });
+        return;
+      }
       const code = err instanceof DomainError ? err.code : 'unknownError';
       const details = {
         ...context(),
@@ -804,15 +883,27 @@ export class AdminController {
       if (code === 'expired') this.log.debug(details);
       else if (err instanceof DomainError || terminal(err)) this.log.warn(details);
       else this.log.error(details);
-      if (terminal(err) || (attempted && !i.deferred && !i.replied)) return;
+      if (
+        replyState?.current() === false ||
+        terminal(err) ||
+        (attempted && !i.deferred && !i.replied)
+      )
+        return;
       try {
-        const message = t(code, err instanceof DomainError ? err.values : {});
+        const message =
+          action === 'diagnose'
+            ? `${t('a.diagnosticFailed')}${code === 'unknownError' ? '' : `\n${t(code, err instanceof DomainError ? err.values : {})}`}`
+            : t(code, err instanceof DomainError ? err.values : {});
         const payload =
           actor?.admin && !['adminOnly', 'forbidden'].includes(code)
             ? this.views.render(
                 actor,
                 language,
-                route.page === 'confirm' ? route.back : route,
+                action === 'diagnose'
+                  ? { page: 'maintenance' }
+                  : route.page === 'confirm'
+                    ? route.back
+                    : route,
                 message,
                 true,
               )
@@ -822,7 +913,7 @@ export class AdminController {
                 true,
                 false,
               );
-        if (i.deferred || i.replied) await i.editReply(editView(payload));
+        if (i.deferred || i.replied) await respond(payload);
         else
           await i.reply({
             ...payload,

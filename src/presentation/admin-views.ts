@@ -29,6 +29,7 @@ import {
   entityVersion,
   type AdminPlan,
   type MaintenancePreview,
+  type MaintenanceProgress,
 } from '../application/administration.js';
 import { session, type View } from './views.js';
 import { translator, proposalStatusKey } from './i18n.js';
@@ -65,7 +66,12 @@ export type AdminRoute =
       roleName?: string;
       back: AdminRoute;
     }
-  | { page: 'maintenance'; preview?: MaintenancePreview; index?: number }
+  | {
+      page: 'maintenance';
+      preview?: MaintenancePreview;
+      index?: number;
+      progress?: MaintenanceProgress;
+    }
   | { page: 'panels'; target: 'member' | 'staff'; channelId?: string; channelName?: string }
   | { page: 'confirm'; plan: AdminPlan; details: string[]; back: AdminRoute; index?: number };
 const home: AdminRoute = { page: 'home' };
@@ -513,7 +519,12 @@ export class AdminViews {
     } else if (route.page === 'maintenance') {
       title('a.maintenance', 'a.maintenanceHelp');
       const preview = route.preview;
-      if (preview) {
+      if (route.progress) {
+        line(`### ${t('a.diagnosticRunning')}`);
+        line(t(`a.diagnostic_${route.progress.phase}`, { ...route.progress }));
+        line(t('a.diagnosticLeave'));
+      } else if (preview) {
+        line(t('a.diagnosticComplete'));
         const report = preview.report;
         if (!report.complete) line(t('a.auditIncomplete'));
         line(
@@ -584,7 +595,7 @@ export class AdminViews {
           b('a.rotate', 'rotate', ButtonStyle.Primary),
         );
       } else line(t('a.diagnosticHelp'));
-      controls(b('a.diagnose', 'diagnose', ButtonStyle.Primary));
+      controls(b('a.diagnose', 'diagnose', ButtonStyle.Primary).setDisabled(!!route.progress));
     } else if (route.page === 'panels') {
       title('a.panels', 'a.panelsHelp');
       controls(

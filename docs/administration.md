@@ -53,6 +53,8 @@ Un renommage Discord partiellement effectué reste journalisé et bloque le jeu 
 
 L’ouverture affiche une aide. **Vérifier maintenant** lit les ressources et l’activité, sans déplacer de salon, changer de rôle, réconcilier la base ou publier d’alerte. Les sessions de navigation restent enregistrées séparément.
 
+Le clic affiche immédiatement la vérification en cours, même lorsqu’elle attend la fin d’une réconciliation. L’écran indique ensuite la lecture des ressources puis le nombre de jeux vérifiés, avec des mises à jour espacées pour limiter les appels Discord. Le bouton de vérification est désactivé pendant ce scan ; **Retour** et **Accueil admin** restent disponibles. Quitter cet écran arrête la suite du scan après l’appel réseau en cours. Une réponse ou une erreur tardive ne remplace pas le nouveau menu ; un autre menu personnel ouvert dans un message distinct reste indépendant. La fin du diagnostic et les échecs sont signalés explicitement, avec possibilité de réessayer.
+
 Le diagnostic présente les écarts, ressources manquantes ou non suivies, noms à réaligner, jeux proposés à l’archivage et historiques incomplets. Les opérations à vérifier donnent accès à l’assistant de réparation. Un audit incomplet n’est pas présenté comme un inventaire exhaustif.
 
 Deux actions distinctes sont proposées :

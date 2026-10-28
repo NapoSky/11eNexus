@@ -199,6 +199,7 @@ export class Controller {
       await this.administration.handle(interaction);
       return;
     }
+    this.administration.invalidateReply(interaction);
     if (interaction.isAutocomplete()) {
       let attempted = false;
       try {

@@ -372,5 +372,12 @@
   "a.nextReview": "Everything is filled in. Open the summary to review and confirm; no channel or role has been created yet.",
   "proposalExpired": "Expired",
   "requestHelp_expired": "This request expired after 30 days without an update. You can submit a new request if you are still interested.",
-  "a.historyRetention": "Inactive requests expire after 30 days. Closed history is kept for 30 days."
+  "a.historyRetention": "Inactive requests expire after 30 days. Closed history is kept for 30 days.",
+  "a.diagnosticRunning": "🔎 Check in progress",
+  "a.diagnostic_waiting": "Preparing and waiting for current operations to finish…",
+  "a.diagnostic_resources": "Reading channels, roles and members…",
+  "a.diagnostic_activity": "Activity: {{current}} / {{total}} games checked.",
+  "a.diagnosticLeave": "You can return to the menu. Leaving this screen stops this check; its result will not replace the menu you opened.",
+  "a.diagnosticComplete": "✅ Check complete. The results are shown below.",
+  "a.diagnosticFailed": "The check failed. You can retry with “Check now” or return to the menu. If the problem persists, check the bot logs."
 }
