@@ -3,7 +3,7 @@ import { AdminViews, type AdminDraft, type AdminRoute } from '../src/presentatio
 import { Administration } from '../src/application/administration.js';
 import { languagesReady, translator } from '../src/presentation/i18n.js';
 import { admin, asset, fixture, game, member } from './helpers.js';
-import { actionId, controls, nodes, select } from './component-helpers.js';
+import { actionId, assertUniqueCustomIds, controls, nodes, select } from './component-helpers.js';
 let f: ReturnType<typeof fixture>, views: AdminViews;
 beforeEach(async () => {
   await languagesReady;
@@ -85,6 +85,7 @@ test.each(['fr', 'en'] as const)(
     for (const route of routes) {
       const view = views.render(admin, language, route),
         components = nodes(view);
+      assertUniqueCustomIds(view);
       expect(view.flags).toBe(MessageFlags.IsComponentsV2);
       expect(view.allowedMentions).toEqual({ parse: [] });
       expect(view).not.toHaveProperty('content');

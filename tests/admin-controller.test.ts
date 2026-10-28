@@ -3,6 +3,7 @@ import {
   Collection,
   ComponentType,
   MessageFlags,
+  ModalSubmitInteraction,
   type Interaction,
   type TextChannel,
 } from 'discord.js';
@@ -14,7 +15,7 @@ import { config } from '../src/infrastructure/config.js';
 import { commands } from '../src/presentation/commands.js';
 import { session, type View } from '../src/presentation/views.js';
 import { admin, fixture, game, member } from './helpers.js';
-import { actionId, controls, nodes, select } from './component-helpers.js';
+import { actionId, assertUniqueCustomIds, controls, nodes, select } from './component-helpers.js';
 let f: ReturnType<typeof fixture>,
   client: Client,
   gateway: DiscordCommunity,
@@ -69,7 +70,9 @@ function button(customId: string) {
       this.deferred = true;
     }),
     reply: jest.fn<Promise<void>, [unknown]>(async () => {}),
-    editReply: jest.fn<Promise<void>, [unknown]>(async () => {}),
+    editReply: jest.fn<Promise<void>, [unknown]>(async (payload) => {
+      assertUniqueCustomIds(payload);
+    }),
     showModal: jest.fn<Promise<void>, [unknown]>(async () => {}),
   };
 }
@@ -539,4 +542,89 @@ test('admin RAWG searches can repeat during testing without consuming member sea
   }
   expect(f.catalogue.search).toHaveBeenCalledTimes(6);
   expect(f.repository.get(key)).toEqual(recent);
+});
+
+test('an admin can request details on their own game using real SDK Label parsing; cancel and back stay distinct', async () => {
+  const p = await f.nexus.propose(admin, 'Half Life 2', 'https://example.com/half-life-2', 'fr');
+  const detail = render({
+      page: 'request',
+      id: p.id,
+      back: { page: 'requests', filter: 'all', query: 'Half', index: 0 },
+    }),
+    open = click(detail, 'clarify');
+  await controller.handle(open as unknown as Interaction);
+  const modal = JSON.parse(JSON.stringify(open.showModal.mock.calls[0]![0]));
+  const sdk = Reflect.construct(ModalSubmitInteraction, [
+    client,
+    {
+      id: '100000000000000123',
+      application_id: '100000000000000124',
+      type: 5,
+      token: 'test-only',
+      version: 1,
+      locale: 'fr',
+      guild_locale: 'fr',
+      guild_id: gateway.config.guildId,
+      entitlements: [],
+      authorizing_integration_owners: {},
+      user: { id: admin.id, username: 'admin', discriminator: '0', avatar: null },
+      data: {
+        custom_id: modal.custom_id,
+        components: [
+          {
+            type: 18,
+            id: 1,
+            component: {
+              type: 4,
+              id: 2,
+              custom_id: 'reason',
+              value: 'Merci de confirmer la bonne édition.',
+            },
+          },
+        ],
+      },
+    },
+  ]) as ModalSubmitInteraction;
+  const submitted = { ...submit(open, {}), fields: sdk.fields };
+  const review = await run(submitted);
+  assertUniqueCustomIds(review);
+  expect(actionId(review, 'cancel', 'na')).not.toBe(actionId(review, 'back', 'na'));
+  await run(click(review, 'cancel'));
+  expect(f.repository.proposal(p.id)?.status).toBe('pending');
+  await run(click(review, 'confirm'));
+  expect(f.repository.proposal(p.id)).toMatchObject({
+    status: 'needs_info',
+    reason: 'Merci de confirmer la bonne édition.',
+  });
+  expect(log.error).not.toHaveBeenCalled();
+});
+test('identity validation clearly shows the remaining image step before an approval is ready', async () => {
+  const p = await f.nexus.propose(admin, 'Half Life 2', 'https://example.com', 'fr');
+  let view = await run(
+    click(render({ page: 'request', id: p.id, back: { page: 'home' } }), 'approve'),
+  );
+  const identity = click(view, 'identity');
+  await controller.handle(identity as unknown as Interaction);
+  view = await run(submit(identity, { name: 'Half Life 2', url: 'https://example.com' }));
+  expect(JSON.stringify(view)).toContain('Nom et lien validés');
+  expect(JSON.stringify(view)).toContain('Visuel manquant');
+  expect(JSON.stringify(view)).toContain('Il reste à choisir un visuel');
+  expect(controls(view).find((n) => n.custom_id?.includes(':preview:'))?.disabled).toBe(true);
+  const parent = f.add(game());
+  view = await run(click(view, 'parent'));
+  view = await run(chosen(view, 'parent-game', parent.id));
+  expect(JSON.stringify(view)).toContain('Visuel prêt');
+  expect(JSON.stringify(view)).toContain('Tout est renseigné');
+  expect(controls(view).find((n) => n.custom_id?.includes(':preview:'))?.disabled).toBe(false);
+});
+test('a blank clarification reason is rejected before rendering an empty Text Display', async () => {
+  const p = await f.nexus.propose(admin, 'A game', 'https://example.com', 'fr'),
+    open = click(render({ page: 'request', id: p.id, back: { page: 'home' } }), 'clarify');
+  await controller.handle(open as unknown as Interaction);
+  const view = await run(submit(open, { reason: '   ' }));
+  expect(JSON.stringify(view)).toContain('Vérifie les informations');
+  expect(f.repository.proposal(p.id)?.status).toBe('pending');
+  expect(log.warn).toHaveBeenCalledWith(
+    expect.objectContaining({ code: 'invalidInput', action: 'clarify', page: 'request' }),
+  );
 });

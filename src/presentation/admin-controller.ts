@@ -374,6 +374,35 @@ export class AdminController {
       interactionId: i.id,
       phase,
       elapsedMs: Date.now() - startedAt,
+      action: [
+        'home',
+        'requests',
+        'catalogue',
+        'maintenance',
+        'panels',
+        'approve',
+        'clarify',
+        'reject',
+        'confirm',
+        'cancel',
+        'back',
+        'identity',
+        'upload',
+        'rawg',
+        'preview',
+        'edit',
+        'repair',
+        'diagnose',
+        'reconcile',
+        'rotate',
+        'attach',
+        'candidate',
+        'previous',
+        'next',
+      ].includes(action)
+        ? action
+        : 'other',
+      page: route.page,
       receivedAgeMs:
         typeof i.createdTimestamp === 'number'
           ? Math.max(0, startedAt - i.createdTimestamp)
@@ -458,14 +487,9 @@ export class AdminController {
           };
         } else if (action === 'identity') {
           const draft = this.draft(route);
-          route = {
-            page: 'prepare',
-            draft: {
-              ...draft,
-              name: i.fields.getTextInputValue('name').trim(),
-              url: i.fields.getTextInputValue('url').trim(),
-            },
-          };
+          const name = i.fields.getTextInputValue('name').trim();
+          const url = this.nexus.validateIdentity(name, i.fields.getTextInputValue('url').trim());
+          route = { page: 'prepare', draft: { ...draft, name, url, identityConfirmed: true } };
         } else if (action === 'upload') {
           const draft = this.draft(route),
             files = i.fields.getUploadedFiles('image', true);
@@ -501,7 +525,7 @@ export class AdminController {
             language,
           );
         } else throw new DomainError('invalidInput');
-      } else if (action === 'back') route = adminParent(route);
+      } else if (action === 'back' || action === 'cancel') route = adminParent(route);
       else if (action === 'requests' || action === 'catalogue') route = list(action);
       else if (action === 'maintenance') route = { page: 'maintenance' };
       else if (action === 'panels') route = await this.panelRoute('member');
@@ -598,6 +622,7 @@ export class AdminController {
               url: candidate.url,
               rawgId: candidate.id,
               assetId: asset?.id || null,
+              identityConfirmed: true,
             },
           };
         } else if (action === 'parent-game' && route.page === 'parents') {

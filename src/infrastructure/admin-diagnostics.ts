@@ -28,6 +28,13 @@ const hints: Record<string, string> = {
   50027: 'The interaction webhook token is invalid or expired. Open a fresh panel.',
   50035: 'Discord rejected the response payload. Check component and message limits.',
   InteractionAlreadyReplied: 'This interaction was already acknowledged; do not reply twice.',
+  ModalSubmitInteractionFieldNotFound:
+    'A form field is missing. Reopen a fresh form and check modal component mapping.',
+  ModalSubmitInteractionFieldType:
+    'A form field has an unexpected component type. Check modal component mapping.',
+  ModalSubmitInteractionFieldEmpty: 'A required form field is empty.',
+  GuildMembersTimeout:
+    'Discord member inventory timed out. Check Gateway connectivity and Server Members Intent.',
   InteractionNotReplied: 'The interaction must be acknowledged before editing its reply.',
   4004: 'Discord rejected authentication. Check BOT_TOKEN.',
   4014: 'Enable Server Members Intent for the bot in the Discord developer portal.',

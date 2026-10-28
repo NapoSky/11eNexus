@@ -83,3 +83,54 @@ test('nested network causes remain useful without leaking request credentials', 
   expect(safeError(error)).toMatchObject({ type: 'TypeError', errorCode: 'ENOTFOUND' });
   expect(JSON.stringify(safeError(error))).not.toContain('private-key');
 });
+
+test('Discord invalid-form details expose only known field paths and fixed validation codes', () => {
+  const error = Object.assign(new Error('private-user-text'), {
+    code: 50035,
+    rawError: {
+      errors: {
+        components: {
+          0: {
+            components: {
+              3: {
+                components: {
+                  1: {
+                    custom_id: {
+                      _errors: [
+                        {
+                          code: 'COMPONENT_CUSTOM_ID_DUPLICATED',
+                          message: 'private-user-text with private-token',
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        'private-token': { _errors: [{ code: 'BASE_TYPE_REQUIRED' }] },
+      },
+    },
+    requestBody: { token: 'private-token' },
+  });
+  const result = safeError(error);
+  expect(result.validation).toEqual([
+    {
+      path: 'components.0.components.3.components.1.custom_id',
+      code: 'COMPONENT_CUSTOM_ID_DUPLICATED',
+    },
+  ]);
+  expect(JSON.stringify(result)).not.toContain('private-token');
+  expect(JSON.stringify(result)).not.toContain('private-user-text');
+});
+test('recognized SDK form errors retain their fixed code without logging field names or values', () => {
+  const error = Object.assign(new Error('private form field / private-token'), {
+    code: 'ModalSubmitInteractionFieldNotFound',
+  });
+  expect(safeError(error)).toMatchObject({
+    libraryCode: 'ModalSubmitInteractionFieldNotFound',
+    errorCode: 'ModalSubmitInteractionFieldNotFound',
+  });
+  expect(JSON.stringify(safeError(error))).not.toContain('private-token');
+});

@@ -40,3 +40,9 @@ export function actionId(payload: unknown, action: string, namespace = 'nx'): st
   if (!id) throw new Error(`Missing ${action} control`);
   return id;
 }
+
+export function assertUniqueCustomIds(payload: unknown): void {
+  const ids = controls(payload).map((component) => component.custom_id!);
+  if (new Set(ids).size !== ids.length)
+    throw new Error('Duplicate interactive component custom IDs');
+}

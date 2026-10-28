@@ -360,5 +360,17 @@
   "a.moreAliases": "{{count}} more aliases available in Edit game.",
   "a.nameDifference": "Discord names can be aligned from the game page",
   "a.imageFormats": "PNG, JPEG or WebP · up to 5 MB",
-  "repairRoleReferences": "This role is used by other channel permissions or onboarding. Choose a notification role dedicated to this game."
+  "repairRoleReferences": "This role is used by other channel permissions or onboarding. Choose a notification role dedicated to this game.",
+  "a.progressTitle": "Preparation status",
+  "a.identityConfirmed": "✅ Name and link confirmed",
+  "a.identityFilled": "✅ Name and link filled in — review them in the summary",
+  "a.identityMissing": "⏳ Name and link need to be completed or corrected",
+  "a.visualReady": "✅ Image ready",
+  "a.visualMissing": "⏳ Image missing",
+  "a.nextIdentity": "Next step: use “Name and link” to complete the game’s identity.",
+  "a.nextVisual": "Choose an image next: RAWG search, a parent icon or an upload. The review button stays unavailable until then.",
+  "a.nextReview": "Everything is filled in. Open the summary to review and confirm; no channel or role has been created yet.",
+  "proposalExpired": "Expired",
+  "requestHelp_expired": "This request expired after 30 days without an update. You can submit a new request if you are still interested.",
+  "a.historyRetention": "Inactive requests expire after 30 days. Closed history is kept for 30 days."
 }

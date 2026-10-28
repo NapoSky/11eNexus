@@ -19,3 +19,7 @@ export function translator(
   const fixed = instance.getFixedT(language);
   return (key, values = {}) => String(fixed(key, values));
 }
+
+export function proposalStatusKey(status: string): string {
+  return status === 'expired' ? 'proposalExpired' : status;
+}

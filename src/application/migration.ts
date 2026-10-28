@@ -400,6 +400,7 @@ export async function applyPlan(
       await community.move(game, target.state === 'archived', op.id);
       repository.saveGame(target);
       op.status = 'completed';
+      op.completedAt = Date.now();
       repository.saveOperation(op);
       repository.audit('import', null, target.id, Date.now());
       for (const previous of repository
@@ -412,6 +413,7 @@ export async function applyPlan(
             (o.status === 'pending' || o.status === 'review'),
         )) {
         previous.status = 'completed';
+        previous.completedAt = Date.now();
         previous.data.resolvedBy = op.id;
         repository.saveOperation(previous);
       }

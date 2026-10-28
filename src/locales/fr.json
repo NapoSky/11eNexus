@@ -360,5 +360,17 @@
   "a.moreAliases": "{{count}} autres alias visibles dans Modifier la fiche.",
   "a.nameDifference": "Noms Discord à réaligner depuis la fiche",
   "a.imageFormats": "PNG, JPEG ou WebP · 5 Mo maximum",
-  "repairRoleReferences": "Ce rôle intervient dans d’autres accès ou dans le questionnaire. Choisis un rôle de notifications dédié au jeu."
+  "repairRoleReferences": "Ce rôle intervient dans d’autres accès ou dans le questionnaire. Choisis un rôle de notifications dédié au jeu.",
+  "a.progressTitle": "État de la préparation",
+  "a.identityConfirmed": "✅ Nom et lien validés",
+  "a.identityFilled": "✅ Nom et lien renseignés — à vérifier dans le récapitulatif",
+  "a.identityMissing": "⏳ Nom et lien à compléter ou à corriger",
+  "a.visualReady": "✅ Visuel prêt",
+  "a.visualMissing": "⏳ Visuel manquant",
+  "a.nextIdentity": "Prochaine étape : utilise « Nom et lien » pour compléter l’identité du jeu.",
+  "a.nextVisual": "Il reste à choisir un visuel : recherche RAWG, icône d’un parent ou image jointe. Le récapitulatif reste indisponible jusque-là.",
+  "a.nextReview": "Tout est renseigné. Ouvre le récapitulatif pour relire et confirmer ; aucun salon ni rôle n’a encore été créé.",
+  "proposalExpired": "Expirée",
+  "requestHelp_expired": "Cette demande a expiré après 30 jours sans évolution. Tu peux envoyer une nouvelle demande si le jeu t’intéresse toujours.",
+  "a.historyRetention": "Demandes sans évolution : expiration après 30 jours. Historique clôturé : conservation 30 jours."
 }

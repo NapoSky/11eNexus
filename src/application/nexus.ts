@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {
   archiveCandidates,
+  ADMIN_RETENTION_MS,
+  validateGameIdentity,
   DAY,
   DomainError,
   normalize,
@@ -104,6 +106,7 @@ export class Nexus {
   private finish(op: Operation, status: Operation['status'], error: string | null = null): void {
     op.status = status;
     op.error = error;
+    op.completedAt = ['completed', 'failed'].includes(status) ? this.now() : null;
     this.repository.saveOperation(op);
   }
   private async full(): Promise<never> {
@@ -289,24 +292,36 @@ export class Nexus {
     });
   }
   validateIdentity(name: string, url: string): string {
-    if (!name.trim() || name.length > 100 || url.length > 500)
-      throw new DomainError('invalidInput');
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      throw new DomainError('invalidInput');
-    }
-    if (
-      parsed.protocol !== 'https:' ||
-      parsed.username ||
-      parsed.password ||
-      parsed.hostname === 'localhost' ||
-      !parsed.hostname.includes('.') ||
-      /^[\d.]+$/.test(parsed.hostname)
-    )
-      throw new DomainError('invalidInput');
-    return parsed.href;
+    return validateGameIdentity(name, url);
+  }
+  private saveProposal(proposal: Proposal): void {
+    proposal.updatedAt = this.now();
+    proposal.closedAt = ['accepted', 'rejected', 'expired'].includes(proposal.status)
+      ? this.now()
+      : null;
+    this.repository.saveProposal(proposal);
+  }
+  async maintain(): Promise<void> {
+    await this.mutex.run(async () => {
+      const now = this.now();
+      this.repository.transaction(() => {
+        const started = this.repository.get<number>('retentionStartedAt') ?? now;
+        if (this.repository.get('retentionStartedAt') === undefined)
+          this.repository.set('retentionStartedAt', started);
+        for (const proposal of this.repository.proposals()) {
+          const lastActivity = proposal.updatedAt ?? Math.max(proposal.createdAt, started);
+          if (
+            ['pending', 'needs_info'].includes(proposal.status) &&
+            lastActivity + ADMIN_RETENTION_MS <= now
+          ) {
+            proposal.status = 'expired';
+            this.saveProposal(proposal);
+            this.repository.audit('expire-proposal', null, proposal.id, now);
+          }
+        }
+      });
+      this.repository.maintain(now);
+    });
   }
   async propose(actor: Actor, name: string, url: string, locale: Locale): Promise<Proposal> {
     requireMember(actor);
@@ -346,7 +361,7 @@ export class Nexus {
         createdAt: this.now(),
         locale,
       };
-      this.repository.saveProposal(proposal);
+      this.saveProposal(proposal);
       await this.community.alert(`proposal:${proposal.id}`, 'proposalAlert', {
         game: proposal.name,
       });
@@ -380,7 +395,7 @@ export class Nexus {
       );
       proposal.status = 'accepted';
       proposal.gameId = game.id;
-      this.repository.saveProposal(proposal);
+      this.saveProposal(proposal);
       this.repository.audit('approve', admin.id, proposal.id, this.now());
       return game;
     });
@@ -399,7 +414,7 @@ export class Nexus {
         throw new DomainError('invalidInput');
       proposal.status = 'rejected';
       proposal.reason = reason;
-      this.repository.saveProposal(proposal);
+      this.saveProposal(proposal);
       this.repository.audit('reject', admin.id, id, this.now());
     });
   }
@@ -417,7 +432,7 @@ export class Nexus {
         throw new DomainError('invalidInput');
       p.status = 'needs_info';
       p.reason = reason.trim();
-      this.repository.saveProposal(p);
+      this.saveProposal(p);
       this.repository.audit('clarify', admin.id, id, this.now());
     });
   }
@@ -443,7 +458,7 @@ export class Nexus {
       p.url = validatedUrl;
       p.status = 'pending';
       p.reason = null;
-      this.repository.saveProposal(p);
+      this.saveProposal(p);
       this.repository.audit('amend-proposal', actor.id, id, this.now());
       await this.community.alert(`proposal-update:${p.id}:${this.now()}`, 'proposalAlert', {
         game: p.name,
@@ -626,7 +641,7 @@ export class Nexus {
         p.name = game.name;
         p.url = url;
         p.gameId = game.id;
-        this.repository.saveProposal(p);
+        this.saveProposal(p);
         this.repository.audit('approve', admin.id, p.id, this.now());
       }
       return game;
@@ -649,7 +664,7 @@ export class Nexus {
       p.status = 'accepted';
       p.gameId = gameId;
       p.reason = null;
-      this.repository.saveProposal(p);
+      this.saveProposal(p);
       this.repository.audit('attach-proposal', admin.id, p.id, this.now());
     });
   }

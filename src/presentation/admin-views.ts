@@ -16,7 +16,14 @@ import {
   escapeMarkdown,
   type MessageActionRowComponentBuilder,
 } from 'discord.js';
-import { DomainError, normalize, requireAdmin, type Actor, type Locale } from '../domain/model.js';
+import {
+  validateGameIdentity,
+  DomainError,
+  normalize,
+  requireAdmin,
+  type Actor,
+  type Locale,
+} from '../domain/model.js';
 import type { Repository } from '../application/ports.js';
 import {
   entityVersion,
@@ -24,7 +31,7 @@ import {
   type MaintenancePreview,
 } from '../application/administration.js';
 import { session, type View } from './views.js';
-import { translator } from './i18n.js';
+import { translator, proposalStatusKey } from './i18n.js';
 
 export interface AdminDraft {
   name: string;
@@ -33,6 +40,7 @@ export interface AdminDraft {
   rawgId: number | null;
   proposalId?: string;
   proposalVersion?: string;
+  identityConfirmed?: boolean;
   back: AdminRoute;
 }
 export type AdminRoute =
@@ -254,6 +262,7 @@ export class AdminViews {
       }
     } else if (route.page === 'requests') {
       title('a.requests', 'a.requestsHelp');
+      line(`-# ${t('a.historyRetention')}`);
       const all = repo
         .proposals()
         .filter(
@@ -275,7 +284,7 @@ export class AdminViews {
           slice(all, route.index).map((p) => ({
             label: p.name,
             value: p.id,
-            description: t(p.status),
+            description: t(proposalStatusKey(p.status)),
           })),
         );
       else line(t('noAdminRequests'));
@@ -332,7 +341,7 @@ export class AdminViews {
     } else if (route.page === 'request') {
       const p = repo.proposal(route.id);
       if (!p) throw new DomainError('notFound');
-      line(`## ${escapeMarkdown(p.name)}\n**${t(p.status)}** · <@${p.actorId}>`);
+      line(`## ${escapeMarkdown(p.name)}\n**${t(proposalStatusKey(p.status))}** · <@${p.actorId}>`);
       line(t('a.requestHelp'));
       line(`[${t('officialUrl')}](${p.url})`);
       if (p.reason) line(`${t('reason')}: ${escapeMarkdown(p.reason)}`);
@@ -403,6 +412,17 @@ export class AdminViews {
         `**${escapeMarkdown(draft.name || t('a.unnamed'))}**${draft.url ? `\n[${t('officialUrl')}](${draft.url})` : ''}`,
       );
       const asset = draft.assetId ? repo.asset(draft.assetId) : null;
+      let identityValid = false;
+      try {
+        validateGameIdentity(draft.name, draft.url);
+        identityValid = true;
+      } catch {
+        /* The progress below explains the missing or invalid identity. */
+      }
+      line(
+        `### ${t('a.progressTitle')}\n${t(identityValid ? (draft.identityConfirmed ? 'a.identityConfirmed' : 'a.identityFilled') : 'a.identityMissing')}\n${t(asset ? 'a.visualReady' : 'a.visualMissing')}`,
+      );
+      line(t(!identityValid ? 'a.nextIdentity' : !asset ? 'a.nextVisual' : 'a.nextReview'));
       if (asset)
         c.addSectionComponents(
           new SectionBuilder()
@@ -413,7 +433,6 @@ export class AdminViews {
                 .setDescription(draft.name || 'Game'),
             ),
         );
-      else line(t('a.iconMissing'));
       controls(
         b('a.identity', 'identity', ButtonStyle.Primary),
         b('a.rawg', 'rawg'),
@@ -424,7 +443,7 @@ export class AdminViews {
       if (full) line(t('capacity'));
       controls(
         b('a.preview', 'preview', ButtonStyle.Success).setDisabled(
-          !asset || !draft.name || !draft.url || full,
+          !asset || !identityValid || full,
         ),
       );
       line(`-# ${t('a.adminQuota')} ${t('noMentions')}`);
@@ -619,7 +638,7 @@ export class AdminViews {
             ? ButtonStyle.Danger
             : ButtonStyle.Success,
         ),
-        b('a.cancel', 'back'),
+        b('a.cancel', 'cancel'),
       );
       line(t('a.confirmExpiry'));
     }

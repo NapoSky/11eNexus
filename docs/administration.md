@@ -12,7 +12,7 @@ L’accueil présente les jeux actifs et archivés, les demandes à traiter, les
 
 ## Demandes
 
-La liste affiche les demandes à traiter par défaut, avec recherche, pagination, filtre « À préciser » et historique complet.
+La liste affiche les demandes à traiter par défaut, avec recherche, pagination, filtre « À préciser » et historique des trente derniers jours.
 
 Depuis une fiche :
 
@@ -22,7 +22,17 @@ Depuis une fiche :
 
 L’aperçu d’image est sauvegardé en SQLite avant confirmation. Les uploads acceptent PNG, JPEG et WebP jusqu’à 5 Mo ; une URL de pièce jointe éphémère n’est pas conservée comme seul exemplaire du visuel. Les abonnés d’un jeu parent ne sont pas copiés.
 
+La préparation affiche l’état du nom, du lien et du visuel, puis la prochaine étape. Le récapitulatif reste indisponible tant qu’une information nécessaire manque ou est invalide. Enregistrer « Nom et lien » ne crée aucun salon ni rôle.
+
 Une demande modifiée par son auteur ou déjà traitée par un autre admin oblige à préparer un nouveau récapitulatif.
+
+## Rétention
+
+Une demande ouverte expire après **30 jours sans mise à jour**. Une demande de précision ou une réponse de l’auteur relance ce délai. Après acceptation, refus ou expiration, sa fiche reste consultable **30 jours à partir de sa clôture**, puis est supprimée de SQLite.
+
+Les entrées d’audit et les opérations terminées ou échouées sont également supprimées après 30 jours. Les opérations en attente ou à vérifier restent conservées jusqu’à leur résolution, même au-delà de ce délai. Cette rétention ne plafonne pas le nombre de demandes administratives créées dans les trente jours ; l’exemption des quotas Admin reste applicable.
+
+Le nettoyage s’exécute au démarrage puis à chaque cycle périodique, avant la réconciliation Discord. Les anciens dossiers sans date de mise à jour ou de clôture bénéficient d’un délai de trente jours à compter du premier nettoyage de cette version. Les jeux, leurs associations, visuels et abonnements, les justificatifs d’import et les messages Discord ne sont pas supprimés par cette rétention. Les sauvegardes existantes ne sont pas modifiées.
 
 ## Catalogue
 

@@ -2,7 +2,13 @@ import { DatabaseSync, backup } from 'node:sqlite';
 import { chmodSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import type { Asset, Game, Operation, Proposal } from '../domain/model.js';
+import {
+  ADMIN_RETENTION_MS,
+  type Asset,
+  type Game,
+  type Operation,
+  type Proposal,
+} from '../domain/model.js';
 import type { Repository, Session } from '../application/ports.js';
 
 export class Store implements Repository {
@@ -138,7 +144,8 @@ export class Store implements Repository {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
   proposal(id: string): Proposal | undefined {
-    return this.proposals().find((p) => p.id === id);
+    const row = this.db.prepare('SELECT data FROM proposals WHERE id=?').get(id);
+    return row ? (JSON.parse(String(row.data)) as Proposal) : undefined;
   }
   saveProposal(p: Proposal): void {
     this.db.prepare('INSERT OR REPLACE INTO proposals VALUES (?,?)').run(p.id, JSON.stringify(p));
@@ -184,6 +191,26 @@ export class Store implements Repository {
   maintain(now: number): void {
     this.transaction(() => {
       this.db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(now);
+      const started = this.get<number>('retentionStartedAt') ?? now;
+      if (this.get('retentionStartedAt') === undefined) this.set('retentionStartedAt', started);
+      const cutoff = now - ADMIN_RETENTION_MS;
+      this.db.prepare('DELETE FROM audit WHERE at<=?').run(cutoff);
+      this.db
+        .prepare(
+          "DELETE FROM proposals WHERE json_extract(data,'$.status') IN ('accepted','rejected','expired') AND COALESCE(json_extract(data,'$.closedAt'),MAX(json_extract(data,'$.createdAt'),?))<=?",
+        )
+        .run(started, cutoff);
+      this.db
+        .prepare(
+          "DELETE FROM operations WHERE json_extract(data,'$.status') IN ('completed','failed') AND COALESCE(json_extract(data,'$.completedAt'),MAX(json_extract(data,'$.startedAt'),?))<=?",
+        )
+        .run(started, cutoff);
+      this.db
+        .prepare(
+          "DELETE FROM metadata WHERE (key LIKE 'alert:%' OR key LIKE 'notification:%') AND CAST(value AS INTEGER)<=?",
+        )
+        .run(cutoff);
+      this.db.prepare('DELETE FROM cooldowns WHERE at<=?').run(cutoff);
       this.db
         .prepare(
           "DELETE FROM metadata WHERE (key LIKE 'import-icon:%' OR key LIKE 'admin-action:%') AND json_extract(value,'$.expiresAt')<=?",

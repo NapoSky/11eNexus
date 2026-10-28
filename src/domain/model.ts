@@ -45,10 +45,12 @@ export interface Proposal {
   actorId: string;
   name: string;
   url: string;
-  status: 'pending' | 'needs_info' | 'accepted' | 'rejected';
+  status: 'pending' | 'needs_info' | 'accepted' | 'rejected' | 'expired';
   reason: string | null;
   gameId: string | null;
   createdAt: number;
+  updatedAt?: number;
+  closedAt?: number | null;
   locale: Locale;
 }
 export interface Operation {
@@ -58,6 +60,7 @@ export interface Operation {
   actorId: string | null;
   status: 'pending' | 'completed' | 'failed' | 'review';
   startedAt: number;
+  completedAt?: number | null;
   data: Record<string, unknown>;
   error: string | null;
 }
@@ -104,4 +107,25 @@ export function archiveCandidates(games: Game[], now: number, minimum: number): 
       ? now - g.activatedAt >= 2 * DAY
       : !protectedIds.has(g.id) && now - (g.lastActivityAt ?? g.activatedAt) >= 30 * DAY,
   );
+}
+
+export const ADMIN_RETENTION_MS = 30 * DAY;
+export function validateGameIdentity(name: string, url: string): string {
+  if (!name.trim() || name.length > 100 || url.length > 500) throw new DomainError('invalidInput');
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new DomainError('invalidInput');
+  }
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.username ||
+    parsed.password ||
+    parsed.hostname === 'localhost' ||
+    !parsed.hostname.includes('.') ||
+    /^[\d.]+$/.test(parsed.hostname)
+  )
+    throw new DomainError('invalidInput');
+  return parsed.href;
 }

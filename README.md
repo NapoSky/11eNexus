@@ -95,6 +95,8 @@ L’administration est centralisée dans un panneau Components V2 : **Demandes**
 
 Les consultations n’appliquent pas de mutation Discord. Réconciliation et rotation sont distinctes et demandent une confirmation après aperçu. Une modification du titre peut aussi aligner les noms Discord du salon et du rôle, sur choix explicite. Retirer un jeu conserve son salon, son historique et son rôle ; cela ne libère pas de place dans les catégories Discord. Le rôle Admin est exempt des quotas membres d’ajout, de relance, de demande et de recherche, dans les deux parcours ; les capacités du serveur et le quota global RAWG restent applicables.
 
+Les demandes ouvertes expirent après trente jours sans mise à jour, puis restent dans l’historique trente jours après leur clôture. Le journal d’audit et les opérations terminées sont conservés trente jours ; les opérations à réparer restent conservées. Le nettoyage automatique préserve le catalogue, les abonnements et les messages Discord. Voir la [politique de rétention](docs/administration.md#rétention).
+
 Pour lister les ressources suivies et strictement non suivies, utiliser la base de production :
 
 ```sh

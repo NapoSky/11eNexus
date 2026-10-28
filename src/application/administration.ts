@@ -102,6 +102,11 @@ export class Administration {
     return this.nexus.mutex.run(async () => {
       const world = await this.nexus.community.snapshot();
       if (!world.complete) throw new DomainError('incomplete');
+      if (
+        (action.kind === 'reject' || action.kind === 'clarify') &&
+        (!action.reason.trim() || action.reason.length > 500)
+      )
+        throw new DomainError('invalidInput');
       if (action.kind === 'create') {
         action.input.url = this.nexus.validateIdentity(action.input.name, action.input.url);
         if (!this.nexus.repository.asset(action.input.assetId))

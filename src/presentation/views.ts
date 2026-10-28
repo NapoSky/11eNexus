@@ -28,7 +28,7 @@ import {
   type Proposal,
 } from '../domain/model.js';
 import type { Repository, Session } from '../application/ports.js';
-import { translator } from './i18n.js';
+import { translator, proposalStatusKey } from './i18n.js';
 
 export interface View {
   flags: MessageFlags.IsComponentsV2;
@@ -544,6 +544,7 @@ export class Views {
       t(admin ? 'adminRequests' : 'myRequests'),
       t(admin ? 'adminRequestsHelp' : 'requestsHelp'),
     );
+    c.addTextDisplayComponents(text(`-# ${t('a.historyRetention')}`));
     if (proposals.length) {
       c.addActionRowComponents(
         row(
@@ -554,7 +555,7 @@ export class Views {
               proposals.map((p) => ({
                 label: p.name.slice(0, 100),
                 value: p.id,
-                description: t(p.status),
+                description: t(proposalStatusKey(p.status)),
               })),
             ),
         ),
@@ -591,7 +592,7 @@ export class Views {
       t(`requestHelp_${p.status}`),
     );
     if (notice) c.addTextDisplayComponents(text(`✅ ${notice}`));
-    c.addTextDisplayComponents(text(`**${t(p.status)}**`));
+    c.addTextDisplayComponents(text(`**${t(proposalStatusKey(p.status))}**`));
     if (p.reason)
       c.addTextDisplayComponents(text(`**${t('reason')}**\n${escapeMarkdown(p.reason)}`));
     if (actor.admin && ['pending', 'needs_info'].includes(p.status))

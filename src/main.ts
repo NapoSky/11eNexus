@@ -78,8 +78,8 @@ async function main(): Promise<void> {
     const startedAt = performance.now();
     logger.info({ event: 'reconciliation_started' });
     try {
+      await app.nexus.maintain();
       await app.nexus.synchronize();
-      repository.maintain(Date.now());
       lastSync = Date.now();
       health(true);
       const games = repository.games();
