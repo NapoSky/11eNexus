@@ -53,7 +53,7 @@ export interface Proposal {
 }
 export interface Operation {
   id: string;
-  kind: 'create' | 'activate' | 'archive' | 'recycle' | 'import';
+  kind: 'create' | 'activate' | 'archive' | 'recycle' | 'import' | 'rename';
   gameId: string;
   actorId: string | null;
   status: 'pending' | 'completed' | 'failed' | 'review';

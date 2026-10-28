@@ -9,7 +9,6 @@ import {
   TextInputBuilder,
   TextInputStyle,
   type Interaction,
-  type ChatInputCommandInteraction,
   type Message,
 } from 'discord.js';
 import {
@@ -22,7 +21,7 @@ import {
 import type { Nexus } from '../application/nexus.js';
 import type { Session } from '../application/ports.js';
 import type { DiscordCommunity } from '../infrastructure/discord.js';
-import { discordAttachment } from '../infrastructure/images.js';
+import { AdminController } from './admin-controller.js';
 import { commands } from './commands.js';
 import { locale, translator } from './i18n.js';
 import {
@@ -84,6 +83,7 @@ const string = (s: Session, key: string): string => {
 };
 export class Controller {
   readonly views: Views;
+  readonly administration: AdminController;
   private readonly pending = new Set<Promise<void>>();
   constructor(
     readonly nexus: Nexus,
@@ -91,6 +91,13 @@ export class Controller {
     private readonly log: AppLogger = logger.child({ component: 'interactions' }),
   ) {
     this.views = new Views(nexus.repository, gateway.config.guildId);
+    this.administration = new AdminController(
+      nexus,
+      gateway,
+      (i) => this.actor(i),
+      (id) => this.installPanel(id),
+      log,
+    );
   }
   listen(): void {
     this.gateway.client.on(Events.InteractionCreate, (i) => {
@@ -188,6 +195,10 @@ export class Controller {
     await (await this.gateway.guild()).commands.set(commands());
   }
   async handle(interaction: Interaction): Promise<void> {
+    if (this.administration.accepts(interaction)) {
+      await this.administration.handle(interaction);
+      return;
+    }
     if (interaction.isAutocomplete()) {
       let attempted = false;
       try {
@@ -406,11 +417,6 @@ export class Controller {
           await respond(this.views.home(actor, language));
           return;
         }
-        if (i.commandName === 'nexus-admin') {
-          requireAdmin(actor);
-          await this.admin(i, actor);
-          return;
-        }
         throw new DomainError('notFound');
       }
       if (i.isModalSubmit()) {
@@ -624,9 +630,8 @@ export class Controller {
         );
         return;
       }
-      if (action === 'requests' || action === 'admin') {
-        if (action === 'admin') requireAdmin(actor);
-        await respond(this.views.proposals(actor, language, action === 'admin'));
+      if (action === 'requests') {
+        await respond(this.views.proposals(actor, language));
         return;
       }
       if (action === 'next' || action === 'previous') {
@@ -717,91 +722,5 @@ export class Controller {
       admin: target.admin,
       page: target.page,
     });
-  }
-  private async admin(i: ChatInputCommandInteraction, actor: Actor): Promise<void> {
-    const language = locale(i.locale);
-    const t = translator(language);
-    const respond = async (payload: View | string) =>
-      i.editReply(
-        editView(typeof payload === 'string' ? this.views.feedback(language, payload) : payload),
-      );
-    const sub = i.options.getSubcommand();
-    if (sub === 'setup') {
-      await this.installPanel(i.options.getChannel('channel')?.id);
-      await respond(t('panelInstalled'));
-      return;
-    }
-    if (sub === 'proposals') {
-      await respond(this.views.proposals(actor, locale(i.locale), true));
-      return;
-    }
-    if (sub === 'status') {
-      await respond(
-        t('adminStatus', {
-          games: this.nexus.repository.games().length,
-          pending: this.nexus.repository
-            .proposals()
-            .filter((p) => p.status === 'pending' || p.status === 'needs_info').length,
-          operations: this.nexus.repository
-            .operations()
-            .filter((o) => o.status === 'pending' || o.status === 'review').length,
-        }),
-      );
-      return;
-    }
-    if (sub === 'reconcile') {
-      await this.nexus.synchronize();
-      await respond(t('saved'));
-      return;
-    }
-    if (sub === 'reject' || sub === 'clarify') {
-      await (
-        sub === 'reject' ? this.nexus.reject.bind(this.nexus) : this.nexus.clarify.bind(this.nexus)
-      )(actor, i.options.getString('proposal', true), i.options.getString('reason', true));
-      await respond(t('saved'));
-      return;
-    }
-    if (sub === 'approve') {
-      const p = this.nexus.repository.proposal(i.options.getString('proposal', true));
-      if (!p) throw new DomainError('notFound');
-      const parent = i.options.getString('parent');
-      const attachment = i.options.getAttachment('icon');
-      const asset = parent
-        ? this.nexus.repository.asset(this.nexus.repository.game(parent)?.assetId || '')
-        : attachment
-          ? await discordAttachment(attachment.url)
-          : null;
-      if (!asset) throw new DomainError('invalidImage');
-      const requester = await this.gateway.actor(p.actorId);
-      const game = await this.nexus.approve(actor, requester, p.id, asset, parent || undefined);
-      await respond(this.views.game(actor, locale(i.locale), game.id));
-      return;
-    }
-    const id = i.options.getString('game', true);
-    if (sub === 'repair') {
-      await this.nexus.repair(
-        actor,
-        id,
-        i.options.getChannel('channel', true).id,
-        i.options.getRole('role', true).id,
-      );
-      await respond(t('saved'));
-      return;
-    }
-    if (sub === 'edit')
-      await this.nexus.edit(
-        actor,
-        id,
-        i.options.getString('name', true),
-        (i.options.getString('aliases') || '')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean),
-      );
-    else if (sub === 'retire') await this.nexus.retire(actor, id);
-    else if (sub === 'block' || sub === 'unblock')
-      await this.nexus.block(actor, id, sub === 'block');
-    else throw new DomainError('invalidInput');
-    await respond(t('saved'));
   }
 }

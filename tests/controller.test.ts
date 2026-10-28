@@ -58,7 +58,7 @@ function button(customId: string, roleIds = [gateway.config.memberRoleId]) {
       this.deferred = true;
     }),
     editReply: jest.fn<Promise<void>, [unknown]>(async () => {}),
-    reply: jest.fn(async () => {}),
+    reply: jest.fn<Promise<void>, [unknown]>(async () => {}),
     showModal: jest.fn<Promise<void>, [unknown]>(async () => {}),
   };
 }
@@ -136,8 +136,8 @@ test('members cannot open the administration proposals view through a forged act
   const s = session(f.repository, member.id, 'browse', {});
   const i = button(`nx:admin:${s.id}`);
   await controller.handle(i as unknown as Interaction);
-  expect(controls(i.editReply.mock.calls[0]![0])).toHaveLength(0);
-  expect(JSON.stringify(i.editReply.mock.calls)).toContain('administrateurs');
+  expect(controls(i.reply.mock.calls[0]![0])).toHaveLength(0);
+  expect(JSON.stringify(i.reply.mock.calls)).toContain('administrateurs');
 });
 test('archives opens the archived catalogue privately without searching RAWG', async () => {
   f.add(game({ name: 'Active game' }));

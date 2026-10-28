@@ -186,7 +186,7 @@ export class Store implements Repository {
       this.db.prepare('DELETE FROM sessions WHERE expires_at<=?').run(now);
       this.db
         .prepare(
-          "DELETE FROM metadata WHERE key LIKE 'import-icon:%' AND json_extract(value,'$.expiresAt')<=?",
+          "DELETE FROM metadata WHERE (key LIKE 'import-icon:%' OR key LIKE 'admin-action:%') AND json_extract(value,'$.expiresAt')<=?",
         )
         .run(now);
       this.db

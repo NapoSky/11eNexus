@@ -33,8 +33,10 @@ export function select(payload: unknown) {
   if (!s?.options) throw new Error('Expected a game/request select menu');
   return s.options;
 }
-export function actionId(payload: unknown, action: string): string {
-  const id = controls(payload).find((n) => n.custom_id?.startsWith(`nx:${action}:`))?.custom_id;
+export function actionId(payload: unknown, action: string, namespace = 'nx'): string {
+  const id = controls(payload).find((n) =>
+    n.custom_id?.startsWith(`${namespace}:${action}:`),
+  )?.custom_id;
   if (!id) throw new Error(`Missing ${action} control`);
   return id;
 }

@@ -23,6 +23,15 @@ import {
   type World,
 } from './ports.js';
 
+// Guards run inside the same application mutex as the mutation.
+export type MutationGuard = () => Promise<void>;
+export interface PreparedGame {
+  name: string;
+  url: string;
+  assetId: string;
+  rawgId: number | null;
+}
+
 export interface Policy {
   maxGames: number;
   minActive: number;
@@ -130,9 +139,10 @@ export class Nexus {
     }
     return world;
   }
-  async create(actor: Actor, rawgId: number): Promise<Game> {
+  async create(actor: Actor, rawgId: number, guard?: MutationGuard): Promise<Game> {
     requireMember(actor);
     return this.mutex.run(async () => {
+      await guard?.();
       const existing = this.repository.byRawg(rawgId);
       if (existing) {
         if (existing.retired) throw new DomainError('blocked');
@@ -140,7 +150,7 @@ export class Nexus {
           throw new DomainError('partial', { game: existing.name });
         return existing;
       }
-      this.quota(actor.id);
+      if (!actor.admin) this.quota(actor.id);
       const candidate = await this.catalogue.get(rawgId);
       const asset = await this.catalogue.image(candidate);
       if (!asset) throw new DomainError('needsReview');
@@ -153,9 +163,10 @@ export class Nexus {
     rawgId: number | null,
     url: string,
     asset: Asset,
+    beneficiaryId?: string,
   ): Promise<Game> {
     requireMember(actor);
-    this.quota(actor.id);
+    if (!actor.admin) this.quota(actor.id);
     if (this.repository.games().length >= this.policy.maxGames) return this.full();
     if (!name.trim() || name.length > 100) throw new DomainError('invalidInput');
     if (
@@ -185,6 +196,8 @@ export class Nexus {
     this.repository.saveAsset(asset);
     this.repository.saveGame(game);
     const op = this.operation('create', game, actor.id, {
+      administrative: actor.admin,
+      beneficiaryId: beneficiaryId || actor.id,
       roleName: game.name,
       previousRoleIds: world.roles.map((r) => r.id),
     });
@@ -197,7 +210,7 @@ export class Nexus {
       game.state = 'active';
       game.activatedAt = this.now();
       this.repository.saveGame(game);
-      this.repository.setCooldown(actor.id, this.now());
+      if (!actor.admin) this.repository.setCooldown(actor.id, this.now());
       this.finish(op, 'completed');
       this.repository.audit('create', actor.id, game.id, this.now());
       return game;
@@ -209,17 +222,19 @@ export class Nexus {
       throw new DomainError('partial', { game: game.name });
     }
   }
-  async activate(actor: Actor, id: string): Promise<Game> {
+  async activate(actor: Actor, id: string, guard?: MutationGuard): Promise<Game> {
     requireMember(actor);
     return this.mutex.run(async () => {
+      await guard?.();
       const game = this.game(id);
       this.requireSettled(id);
       if (game.blocked || game.state === 'unavailable') throw new DomainError('blocked');
       if (game.state === 'active') return game;
-      this.quota(actor.id);
+      if (!actor.admin) this.quota(actor.id);
       if (game.roleState === 'missing') throw new DomainError('needsReview');
       const world = await this.capacity(game.roleState === 'recycled', false);
       const op = this.operation('activate', game, actor.id, {
+        administrative: actor.admin,
         roleName: game.name,
         previousRoleIds: world.roles.map((r) => r.id),
       });
@@ -242,7 +257,7 @@ export class Nexus {
         game.awaitingActivity = true;
         game.activatedAt = this.now();
         this.repository.saveGame(game);
-        this.repository.setCooldown(actor.id, this.now());
+        if (!actor.admin) this.repository.setCooldown(actor.id, this.now());
         this.finish(op, 'completed');
         this.repository.audit('activate', actor.id, game.id, this.now());
         return game;
@@ -273,7 +288,7 @@ export class Nexus {
       return actual;
     });
   }
-  private proposalInput(name: string, url: string): string {
+  validateIdentity(name: string, url: string): string {
     if (!name.trim() || name.length > 100 || url.length > 500)
       throw new DomainError('invalidInput');
     let parsed: URL;
@@ -296,7 +311,7 @@ export class Nexus {
   async propose(actor: Actor, name: string, url: string, locale: Locale): Promise<Proposal> {
     requireMember(actor);
     return this.mutex.run(async () => {
-      const validatedUrl = this.proposalInput(name, url);
+      const validatedUrl = this.validateIdentity(name, url);
       const pending = this.repository
         .proposals()
         .find(
@@ -350,12 +365,14 @@ export class Nexus {
         ? this.repository.asset(this.game(parentGameId).assetId || '')
         : asset;
       if (!chosenAsset) throw new DomainError('invalidImage');
+      requireMember(requester);
       const game = await this.createInternal(
-        requester,
+        admin,
         proposal.name,
         null,
         proposal.url,
         chosenAsset,
+        requester.id,
       );
       proposal.status = 'accepted';
       proposal.gameId = game.id;
@@ -364,9 +381,10 @@ export class Nexus {
       return game;
     });
   }
-  async reject(admin: Actor, id: string, reason: string): Promise<void> {
+  async reject(admin: Actor, id: string, reason: string, guard?: MutationGuard): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      await guard?.();
       const proposal = this.repository.proposal(id);
       if (
         !proposal ||
@@ -381,9 +399,10 @@ export class Nexus {
       this.repository.audit('reject', admin.id, id, this.now());
     });
   }
-  async clarify(admin: Actor, id: string, reason: string): Promise<void> {
+  async clarify(admin: Actor, id: string, reason: string, guard?: MutationGuard): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      await guard?.();
       const p = this.repository.proposal(id);
       if (
         !p ||
@@ -404,7 +423,7 @@ export class Nexus {
       const p = this.repository.proposal(id);
       if (!p || p.actorId !== actor.id) throw new DomainError('forbidden');
       if (p.status !== 'needs_info') throw new DomainError('invalidInput');
-      const validatedUrl = this.proposalInput(name, url);
+      const validatedUrl = this.validateIdentity(name, url);
       if (
         this.repository
           .proposals()
@@ -444,19 +463,23 @@ export class Nexus {
       this.repository.audit('notify', actor.id, id, this.now());
     });
   }
-  async block(admin: Actor, id: string, enabled: boolean): Promise<void> {
+  async block(admin: Actor, id: string, enabled: boolean, guard?: MutationGuard): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      await guard?.();
       const g = this.game(id);
+      if (!enabled) this.requireSettled(id);
       g.blocked = enabled;
       this.repository.saveGame(g);
       this.repository.audit(enabled ? 'block' : 'unblock', admin.id, id, this.now());
     });
   }
-  async retire(admin: Actor, id: string): Promise<void> {
+  async retire(admin: Actor, id: string, guard?: MutationGuard): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      await guard?.();
       const g = this.game(id);
+      this.requireSettled(id);
       if (g.state === 'active') throw new DomainError('archiveFirst');
       g.retired = true;
       g.blocked = true;
@@ -464,9 +487,17 @@ export class Nexus {
       this.repository.audit('retire', admin.id, id, this.now());
     });
   }
-  async edit(admin: Actor, id: string, name: string, aliases: string[]): Promise<void> {
+  async edit(
+    admin: Actor,
+    id: string,
+    name: string,
+    aliases: string[],
+    align = false,
+    guard?: MutationGuard,
+  ): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      await guard?.();
       if (
         !name.trim() ||
         name.length > 100 ||
@@ -475,15 +506,44 @@ export class Nexus {
       )
         throw new DomainError('invalidInput');
       const game = this.game(id);
+      this.requireSettled(id);
+      if (
+        this.repository
+          .games(true)
+          .some((g) => g.id !== id && normalize(g.name) === normalize(name))
+      )
+        throw new DomainError('duplicateGame');
+      if (align) {
+        const op = this.operation('rename', game, admin.id, {
+          previousName: game.name,
+          name: name.trim(),
+        });
+        try {
+          await this.community.renameGame(game, name.trim(), op.id);
+          this.finish(op, 'completed');
+        } catch {
+          game.blocked = true;
+          this.repository.saveGame(game);
+          this.finish(op, 'review', 'discordError');
+          throw new DomainError('partial', { game: game.name });
+        }
+      }
       game.name = name.trim();
       game.aliases = [...new Set(aliases.map((a) => a.trim()))];
       this.repository.saveGame(game);
       this.repository.audit('edit', admin.id, id, this.now());
     });
   }
-  async repair(admin: Actor, id: string, channelId: string, roleId: string): Promise<void> {
+  async repair(
+    admin: Actor,
+    id: string,
+    channelId: string,
+    roleId: string,
+    guard?: MutationGuard,
+  ): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      await guard?.();
       const game = this.game(id);
       const world = await this.community.snapshot();
       if (!world.complete) throw new DomainError('incomplete');
@@ -495,6 +555,7 @@ export class Nexus {
         !role ||
         role.managed ||
         role.permissions !== '0' ||
+        role.references.some((reference) => reference !== channelId) ||
         !role.editable ||
         this.repository
           .games(true)
@@ -521,6 +582,93 @@ export class Nexus {
         .filter((o) => o.gameId === id && (o.status === 'pending' || o.status === 'review')))
         this.finish(op, 'completed');
       this.repository.audit('repair', admin.id, id, this.now());
+    });
+  }
+  async addByAdmin(
+    admin: Actor,
+    input: PreparedGame,
+    guard?: MutationGuard,
+    proposalId?: string,
+    requester?: Actor,
+  ): Promise<Game> {
+    requireAdmin(admin);
+    return this.mutex.run(async () => {
+      await guard?.();
+      const p = proposalId ? this.repository.proposal(proposalId) : undefined;
+      if (
+        proposalId &&
+        (!p || !['pending', 'needs_info'].includes(p.status) || p.actorId !== requester?.id)
+      )
+        throw new DomainError('staleAction');
+      if (p && !requester?.member && !requester?.admin)
+        throw new DomainError('requesterUnavailable');
+      const url = this.validateIdentity(input.name, input.url);
+      const asset = this.repository.asset(input.assetId);
+      if (!asset) throw new DomainError('invalidImage');
+      if (input.rawgId !== null && this.repository.byRawg(input.rawgId))
+        throw new DomainError('duplicateGame');
+      if (this.repository.games(true).some((g) => normalize(g.name) === normalize(input.name)))
+        throw new DomainError('duplicateGame');
+      const game = await this.createInternal(
+        admin,
+        input.name,
+        input.rawgId,
+        url,
+        asset,
+        p?.actorId,
+      );
+      if (p) {
+        p.status = 'accepted';
+        p.name = game.name;
+        p.url = url;
+        p.gameId = game.id;
+        this.repository.saveProposal(p);
+        this.repository.audit('approve', admin.id, p.id, this.now());
+      }
+      return game;
+    });
+  }
+  async attachProposal(
+    admin: Actor,
+    proposalId: string,
+    gameId: string,
+    guard?: MutationGuard,
+  ): Promise<void> {
+    requireAdmin(admin);
+    await this.mutex.run(async () => {
+      await guard?.();
+      const p = this.repository.proposal(proposalId);
+      const game = this.game(gameId);
+      if (!p || !['pending', 'needs_info'].includes(p.status)) throw new DomainError('staleAction');
+      this.requireSettled(gameId);
+      if (game.blocked) throw new DomainError('blocked');
+      p.status = 'accepted';
+      p.gameId = gameId;
+      p.reason = null;
+      this.repository.saveProposal(p);
+      this.repository.audit('attach-proposal', admin.id, p.id, this.now());
+    });
+  }
+  async archive(admin: Actor, id: string, guard?: MutationGuard): Promise<void> {
+    requireAdmin(admin);
+    await this.mutex.run(async () => {
+      await guard?.();
+      const game = this.game(id);
+      this.requireSettled(id);
+      if (game.blocked || game.state !== 'active') throw new DomainError('blocked');
+      const op = this.operation('archive', game, admin.id, { administrative: true });
+      try {
+        await this.community.move(game, true, op.id);
+        game.state = 'archived';
+        this.repository.saveGame(game);
+        this.finish(op, 'completed');
+        this.repository.audit('admin-archive', admin.id, id, this.now());
+      } catch {
+        game.blocked = true;
+        this.repository.saveGame(game);
+        this.finish(op, 'review', 'discordError');
+        throw new DomainError('partial', { game: game.name });
+      }
     });
   }
   private async recycleInternal(game: Game, world: World): Promise<void> {
@@ -558,8 +706,10 @@ export class Nexus {
       this.repository.saveGame(game);
     });
   }
-  async synchronize(rotate = true): Promise<void> {
+  async synchronize(rotate = true, guard?: MutationGuard, admin?: Actor): Promise<void> {
     return this.mutex.run(async () => {
+      if (admin) requireAdmin(admin);
+      await guard?.();
       const adoption = this.repository.get<{ status: string }>('archiveAdoption');
       if (adoption && adoption.status !== 'completed') throw new DomainError('needsReview');
       const world = await this.community.snapshot();
@@ -621,7 +771,7 @@ export class Nexus {
             this.repository.saveGame(game);
           }
           this.finish(op, 'completed');
-          if (op.actorId)
+          if (op.actorId && op.data.administrative !== true)
             this.repository.setCooldown(
               op.actorId,
               Math.max(this.repository.cooldown(op.actorId) || 0, op.startedAt),
@@ -679,6 +829,14 @@ export class Nexus {
         }
         this.repository.saveGame(game);
       }
+      this.repository.set('lastReconciliation', { at: this.now(), rotation: rotate });
+      if (admin)
+        this.repository.audit(
+          rotate ? 'admin-rotation' : 'admin-reconciliation',
+          admin.id,
+          'guild',
+          this.now(),
+        );
       if (!rotate) return;
       for (const game of archiveCandidates(
         this.repository.games(),

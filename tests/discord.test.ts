@@ -311,3 +311,145 @@ test('standby archive adoption hides all textual children and moves only overflo
   expect(create).toHaveBeenCalledTimes(1);
   expect(f.repository.get('archiveCategories')).toEqual([first, second]);
 });
+
+test.each(['public', 'ordinary-role', 'member-overwrite', 'incomplete'])(
+  'staff-panel privacy refuses %s without rewriting any channel permissions',
+  async (situation) => {
+    const everyone = {
+        id: gateway.config.guildId,
+        managed: false,
+        permissions: { has: () => false },
+      },
+      staffRole = {
+        id: gateway.config.adminRoleId,
+        managed: false,
+        permissions: { has: () => false },
+      },
+      ordinaryRole = { id: 'ordinary', managed: false, permissions: { has: () => false } };
+    const roles = new Collection([
+      ['everyone', everyone],
+      ['staff', staffRole],
+      ['ordinary', ordinaryRole],
+    ]);
+    const guild = {
+      id: gateway.config.guildId,
+      ownerId: 'owner',
+      memberCount: situation === 'incomplete' ? 3 : 2,
+      roles: { everyone, fetch: async () => roles },
+      channels: { fetch: jest.fn() },
+      members: { fetch: jest.fn(), fetchMe: async () => ({ id: 'bot' }) },
+    };
+    const staff = {
+        id: 'staff',
+        user: { bot: false },
+        guild,
+        roles: { cache: new Collection([[gateway.config.adminRoleId, staffRole]]) },
+      },
+      regular = { id: 'member', user: { bot: false }, guild, roles: { cache: new Collection() } };
+    const set = jest.fn(),
+      channel = {
+        id: 'staff-channel',
+        type: ChannelType.GuildText,
+        permissionOverwrites: { set },
+        permissionsFor: (target: { id: string }) => ({
+          has: () =>
+            target.id === 'bot' ||
+            target.id === 'staff' ||
+            target === staffRole ||
+            (target === everyone && situation === 'public') ||
+            (target === ordinaryRole && situation === 'ordinary-role') ||
+            (target === regular && situation === 'member-overwrite'),
+        }),
+      };
+    guild.channels.fetch.mockResolvedValue(channel);
+    guild.members.fetch.mockResolvedValue(
+      new Collection([
+        ['staff', staff],
+        ['member', regular],
+      ]),
+    );
+    jest.spyOn(gateway, 'guild').mockResolvedValue(guild as unknown as Guild);
+    await expect(gateway.staffPanelChannel()).rejects.toMatchObject({
+      code: situation === 'incomplete' ? 'incomplete' : 'staffChannelPublic',
+    });
+    expect(set).not.toHaveBeenCalled();
+  },
+);
+test('staff panel privacy accepts an already private channel without changing overwrites', async () => {
+  const everyone = {
+      id: gateway.config.guildId,
+      managed: false,
+      permissions: { has: () => false },
+    },
+    staffRole = {
+      id: gateway.config.adminRoleId,
+      managed: false,
+      permissions: { has: () => false },
+    },
+    roles = new Collection([
+      ['everyone', everyone],
+      ['staff', staffRole],
+    ]);
+  const guild = {
+    id: gateway.config.guildId,
+    ownerId: 'owner',
+    memberCount: 1,
+    roles: { everyone, fetch: async () => roles },
+    channels: { fetch: jest.fn() },
+    members: { fetch: jest.fn(), fetchMe: async () => ({ id: 'bot' }) },
+  };
+  const staff = {
+      id: 'staff',
+      user: { bot: false },
+      guild,
+      roles: { cache: new Collection([[gateway.config.adminRoleId, staffRole]]) },
+    },
+    set = jest.fn(),
+    channel = {
+      id: 'staff-channel',
+      type: ChannelType.GuildText,
+      permissionOverwrites: { set },
+      permissionsFor: (target: unknown) => ({ has: () => target !== everyone }),
+    };
+  guild.channels.fetch.mockResolvedValue(channel);
+  guild.members.fetch.mockResolvedValue(new Collection([['staff', staff]]));
+  jest.spyOn(gateway, 'guild').mockResolvedValue(guild as unknown as Guild);
+  expect(await gateway.staffPanelChannel()).toBe(channel);
+  expect(set).not.toHaveBeenCalled();
+});
+test('resource renaming checks conflicts and hierarchy before its first Discord write', async () => {
+  const channel = {
+      id: 'game-channel',
+      name: 'old',
+      setName: jest.fn(),
+      permissionsFor: () => ({ has: () => true }),
+    },
+    role = {
+      id: 'game-role',
+      name: 'Old',
+      managed: false,
+      permissions: { bitfield: 0n },
+      setName: jest.fn(),
+    },
+    me = { roles: { highest: { comparePositionTo: () => 1 } } };
+  const channels = new Collection([
+      ['game-channel', channel],
+      ['conflict', { ...channel, id: 'conflict', name: 'new-name' }],
+    ]),
+    roles = new Collection([['game-role', role]]);
+  const guild = {
+    channels: { fetch: async (id?: string) => (id ? channel : channels) },
+    roles: { fetch: async (id?: string) => (id ? role : roles) },
+    members: { fetchMe: async () => me },
+  };
+  jest.spyOn(gateway, 'guild').mockResolvedValue(guild as unknown as Guild);
+  await expect(
+    gateway.renameGame(game({ channelId: channel.id, roleId: role.id }), 'New name', 'op'),
+  ).rejects.toMatchObject({ code: 'duplicateGame' });
+  expect(channel.setName).not.toHaveBeenCalled();
+  expect(role.setName).not.toHaveBeenCalled();
+  channels.delete('conflict');
+  await gateway.renameGame(game({ channelId: channel.id, roleId: role.id }), 'New name', 'op');
+  expect(channel.setName).toHaveBeenCalledWith('new-name', expect.any(String));
+  expect(role.setName).toHaveBeenCalledWith('New name', expect.any(String));
+});

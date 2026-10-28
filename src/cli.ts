@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   const command = process.argv[2];
   if (!command || command === 'help') {
     console.info(
-      '11eNexus admin: doctor | audit --output FILE [--role-marker ID] [--categories ID,ID] [--locale fr|en] | inventory --output FILE | prepare --inventory FILE --output FILE [--rawg] [--locale fr|en] | plan --manifest FILE --output FILE | apply --plan FILE --apply | role-mentions [--apply] | setup [--channel ID] | backup --output FILE',
+      '11eNexus admin: doctor | audit --output FILE [--role-marker ID] [--categories ID,ID] [--locale fr|en] | inventory --output FILE | prepare --inventory FILE --output FILE [--rawg] [--locale fr|en] | plan --manifest FILE --output FILE | apply --plan FILE --apply | role-mentions [--apply] | setup [--channel ID] [--admin-channel ID] | backup --output FILE',
     );
     return;
   }
@@ -287,7 +287,8 @@ async function main(): Promise<void> {
     if (command === 'setup') {
       await app.controller.installCommands();
       await app.controller.installPanel(option('channel'));
-      console.info('Commands and bilingual panel installed.');
+      await app.controller.administration.installStaff(option('admin-channel'));
+      console.info('Commands and member/staff panels installed.');
       return;
     }
     throw new DomainError('invalidInput');

@@ -88,6 +88,13 @@ export class FakeCommunity implements MigrationCommunity {
     channel.parentId = archive ? archiveId : activeId;
   });
   repairResources = jest.fn(async () => {});
+  renameGame = jest.fn(async (g: Game, name: string) => {
+    const channel = this.world.channels.find((c) => c.id === g.channelId);
+    const role = this.world.roles.find((r) => r.id === g.roleId);
+    if (!channel || !role) throw new Error('Missing resources');
+    channel.name = name;
+    role.name = name;
+  });
   setSubscription = jest.fn(async (roleId: string, userId: string, enabled: boolean) => {
     const role = this.world.roles.find((r) => r.id === roleId);
     if (!role) throw new Error('Missing role');

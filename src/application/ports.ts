@@ -49,6 +49,8 @@ export interface ChannelObservation {
   parentId: string | null;
   type: number;
   topic: string | null;
+  permissions?: string;
+  editable?: boolean;
 }
 export interface World {
   channels: ChannelObservation[];
@@ -69,6 +71,7 @@ export interface Community {
   createRole(game: Game, asset: Asset | null, operationId: string): Promise<string>;
   move(game: Game, archive: boolean, operationId: string): Promise<void>;
   repairResources(game: Game): Promise<void>;
+  renameGame(game: Game, name: string, operationId: string): Promise<void>;
   setSubscription(roleId: string, memberId: string, enabled: boolean): Promise<void>;
   subscription(roleId: string, memberId: string): Promise<boolean>;
   deleteRole(roleId: string, operationId: string): Promise<void>;

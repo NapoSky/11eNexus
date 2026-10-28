@@ -1,4 +1,11 @@
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  MessageFlags,
+  escapeMarkdown,
   ChannelType,
   Client,
   Events,
@@ -108,6 +115,17 @@ export class DiscordCommunity implements Community {
           parentId: c.parentId,
           type: c.type,
           topic: 'topic' in c ? c.topic : null,
+          permissions: JSON.stringify(
+            [...c.permissionOverwrites.cache.values()]
+              .map((o) => ({
+                id: o.id,
+                type: o.type,
+                allow: o.allow.bitfield.toString(),
+                deny: o.deny.bitfield.toString(),
+              }))
+              .sort((a, b) => a.id.localeCompare(b.id)),
+          ),
+          editable: Boolean(c.permissionsFor(me)?.has(P.ManageChannels)),
         })),
       roles: [...roles.values()].map((r) => ({
         id: r.id,
@@ -343,7 +361,35 @@ export class DiscordCommunity implements Community {
       const channel = await guild.channels.fetch(this.config.adminChannelId);
       if (!channel?.isTextBased() || !('send' in channel)) return;
       const t = translator(guild.preferredLocale.startsWith('fr') ? 'fr' : 'en');
-      await channel.send({ content: t(textKey, values), allowedMentions: { parse: [] } });
+      await channel.send({
+        flags: MessageFlags.IsComponentsV2,
+        components: [
+          new ContainerBuilder()
+            .setAccentColor(0x5865f2)
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                t(
+                  textKey,
+                  Object.fromEntries(
+                    Object.entries(values).map(([key, value]) => [
+                      key,
+                      typeof value === 'string' ? escapeMarkdown(value) : value,
+                    ]),
+                  ),
+                ),
+              ),
+            )
+            .addActionRowComponents(
+              new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                  .setStyle(ButtonStyle.Secondary)
+                  .setLabel(t('admin'))
+                  .setCustomId(textKey === 'proposalAlert' ? 'na:requests' : 'na:maintenance'),
+              ),
+            ),
+        ],
+        allowedMentions: { parse: [] },
+      });
       this.repository.set(`alert:${key}`, Date.now());
     } catch (err) {
       logger.error({ event: 'admin_alert_failed', key: textKey, err });
@@ -485,6 +531,68 @@ export class DiscordCommunity implements Community {
       ],
       '11eNexus: admin panel setup',
     );
+  }
+  async renameGame(game: Game, name: string, operationId: string): Promise<void> {
+    const guild = await this.guild();
+    const [channel, role, me, channels, roles] = await Promise.all([
+      guild.channels.fetch(game.channelId!),
+      guild.roles.fetch(game.roleId!),
+      guild.members.fetchMe(),
+      guild.channels.fetch(),
+      guild.roles.fetch(),
+    ]);
+    if (
+      !channel ||
+      !('setName' in channel) ||
+      !role ||
+      role.managed ||
+      role.permissions.bitfield !== 0n ||
+      me.roles.highest.comparePositionTo(role) <= 0 ||
+      !channel.permissionsFor(me)?.has(P.ManageChannels)
+    )
+      throw new DomainError('needsReview');
+    const target = channelName(name);
+    if (
+      channels.some((c) => c?.id !== channel.id && c?.name === target) ||
+      roles.some((r) => r.id !== role.id && r.name === name)
+    )
+      throw new DomainError('duplicateGame');
+    await channel.setName(target, `11eNexus rename ${operationId}`);
+    await role.setName(name, `11eNexus rename ${operationId}`);
+  }
+  async staffPanelChannel(requested?: string): Promise<TextChannel> {
+    const guild = await this.guild();
+    const channel = await guild.channels.fetch(requested || this.config.adminChannelId);
+    if (channel?.type !== ChannelType.GuildText) throw new DomainError('configuration');
+    const [roles, members] = await Promise.all([guild.roles.fetch(), guild.members.fetch()]);
+    if (members.size < guild.memberCount) throw new DomainError('incomplete');
+    // The persistent message is private; publication never rewrites staff-channel permissions.
+    if (
+      channel.permissionsFor(guild.roles.everyone)?.has(P.ViewChannel) ||
+      roles.some(
+        (role) =>
+          role.id !== guild.id &&
+          role.id !== this.config.adminRoleId &&
+          !role.managed &&
+          !role.permissions.has(P.Administrator) &&
+          channel.permissionsFor(role)?.has(P.ViewChannel),
+      ) ||
+      members.some(
+        (member) =>
+          !member.user.bot &&
+          !this.memberActor(member).admin &&
+          channel.permissionsFor(member)?.has(P.ViewChannel),
+      )
+    )
+      throw new DomainError('staffChannelPublic');
+    const me = await guild.members.fetchMe();
+    if (
+      !channel
+        .permissionsFor(me)
+        ?.has([P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.AttachFiles])
+    )
+      throw new DomainError('configuration');
+    return channel;
   }
   async prepareImportedRole(id: string): Promise<void> {
     const guild = await this.guild();

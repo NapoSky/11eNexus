@@ -78,7 +78,7 @@ Si les rôles ont été importés avec une ancienne version qui bloquait les men
 
 Vérifier depuis un compte Syndiqué : lecture des jeux actifs sans rôle de jeu, invisibilité des archives, parcours d’abonnement, absence de permissions inattendues. Vérifier les admins, le bot et le questionnaire. Publier ensuite le panneau avec `setup`, puis démarrer l’instance.
 
-Si une étape échoue, le jeu et l’opération sont conservés en révision et les modifications déjà faites ne sont pas annulées automatiquement. Corriger les permissions ou rattacher les ressources avec `/nexus-admin repair`. Refaire un inventaire et un nouveau plan pour reprendre une importation partielle. Une réapplication du même plan intégralement terminé est sans effet supplémentaire.
+Si une étape échoue, le jeu et l’opération sont conservés en révision et les modifications déjà faites ne sont pas annulées automatiquement. Corriger les permissions ou rattacher les ressources depuis **Administration → Maintenance → Réparer les associations**. Refaire un inventaire et un nouveau plan pour reprendre une importation partielle. Une réapplication du même plan intégralement terminé est sans effet supplémentaire.
 
 Une adoption d’archives interrompue suspend la réconciliation et la rotation. Corriger la cause puis refaire un plan et appliquer l’adoption explicitement avant de reprendre le runtime ; une simple réparation de fiche de jeu ne suffit pas à confirmer les permissions de toute une catégorie.
 

@@ -11,6 +11,7 @@ export async function discordAttachment(urlString: string, roleIcon = false): Pr
     url.password ||
     !(
       url.pathname.startsWith('/attachments/') ||
+      url.pathname.startsWith('/ephemeral-attachments/') ||
       (roleIcon && url.pathname.startsWith('/role-icons/'))
     )
   )
