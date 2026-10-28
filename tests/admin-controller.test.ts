@@ -112,10 +112,11 @@ function submit(
 }
 const render = (route: AdminRoute) => views.render(admin, 'fr', route);
 
-test('only member and admin entry commands are registered, with no administrative subcommands', () => {
+test('member/admin entry and the status shortcut have no administrative subcommands', () => {
   const registered = commands();
-  expect(registered.map((c) => c.name)).toEqual(['nexus', 'nexus-admin']);
+  expect(registered.map((c) => c.name)).toEqual(['nexus', 'nexus-admin', 'nexus-status']);
   expect(registered.find((c) => c.name === 'nexus-admin')?.options || []).toEqual([]);
+  expect(registered.find((c) => c.name === 'nexus-status')?.options || []).toEqual([]);
 });
 test('a persistent staff button opens one localized private hub without mutations', async () => {
   const i = button('na:home');
@@ -811,4 +812,58 @@ test('returning to a member menu also invalidates an earlier admin diagnostic', 
   await pending;
   expect(i.editReply).toHaveBeenCalledTimes(count);
   expect(JSON.stringify(response(memberHome))).not.toContain('Vérification en cours');
+});
+
+test.each(['fr', 'en'])(
+  'status is a private admin-only read with recorded counts and no diagnostic (%s)',
+  async (locale) => {
+    f.add(game({ state: 'active' }));
+    f.add(game({ state: 'archived' }));
+    await f.nexus.propose(member, 'Another game', 'https://example.com', 'fr');
+    f.repository.set('lastReconciliation', { at: Date.now(), rotation: false });
+    f.community.alert.mockClear();
+    const i = {
+      ...button(''),
+      locale,
+      isButton: () => false,
+      isChatInputCommand: () => true,
+      commandName: 'nexus-status',
+    };
+    const view = await run(i);
+    expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+    expect(JSON.stringify(view)).toContain(
+      locale === 'fr' ? 'État de 11eNexus' : '11eNexus status',
+    );
+    expect(JSON.stringify(view)).toContain(
+      locale === 'fr' ? '1 demandes à traiter' : '1 open requests',
+    );
+    expect(actionId(view, 'home', 'na')).toBeDefined();
+    expect(f.community.snapshot).not.toHaveBeenCalled();
+    expect(f.community.activity).not.toHaveBeenCalled();
+    expect(f.community.alert).not.toHaveBeenCalled();
+    const denied = {
+      ...button(''),
+      isButton: () => false,
+      isChatInputCommand: () => true,
+      commandName: 'nexus-status',
+      user: { id: member.id },
+      member: { roles: [gateway.config.memberRoleId] },
+    };
+    await controller.handle(denied as unknown as Interaction);
+    expect(controls(denied.reply.mock.calls.at(-1)![0])).toHaveLength(0);
+  },
+);
+test('status checks the current admin role after acknowledging the interaction', async () => {
+  jest.mocked(gateway.actor).mockResolvedValueOnce({ ...admin, admin: false });
+  const i = {
+    ...button(''),
+    isButton: () => false,
+    isChatInputCommand: () => true,
+    commandName: 'nexus-status',
+  };
+  const view = await run(i);
+  expect(i.deferReply).toHaveBeenCalled();
+  expect(controls(view)).toHaveLength(0);
+  expect(JSON.stringify(view)).not.toContain('État de 11eNexus');
+  expect(f.community.snapshot).not.toHaveBeenCalled();
 });

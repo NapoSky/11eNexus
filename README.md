@@ -53,7 +53,7 @@ docker compose up -d
 docker compose logs --tail 100 bot
 ```
 
-`setup --channel ID` réutilise un salon textuel dédié et **remplace ses permissions** par celles du panneau en lecture seule. Sans ce paramètre, un salon Nexus est créé. Réexécuter `setup` répare le message connu plutôt que publier un doublon. `setup` installe aussi le point d’entrée dans le salon staff déjà privé, sans en modifier les permissions ; `--admin-channel ID` permet de choisir ce salon. `/nexus-admin`, sans sous-commande, ouvre l’accueil admin personnel ; `/nexus` ouvre le parcours membre.
+`setup --channel ID` réutilise un salon textuel dédié et **remplace ses permissions** par celles du panneau en lecture seule. Sans ce paramètre, un salon Nexus est créé. Réexécuter `setup` répare le message connu plutôt que publier un doublon. `setup` installe aussi le point d’entrée dans le salon staff déjà privé, sans en modifier les permissions ; `--admin-channel ID` permet de choisir ce salon. `/nexus-admin`, sans sous-commande, ouvre l’accueil admin personnel ; `/nexus` ouvre le parcours membre. `/nexus-status` conserve le raccourci de statut privé réservé aux admins (catalogue, demandes, opérations à vérifier et dernière réconciliation).
 
 Le panneau et les écrans personnels utilisent les **Components V2** : logo et bannière, rubriques courtes, aide au choix et fiches de jeu. Le panneau reste unique et bilingue ; la suite s’affiche en privé, en FR ou EN selon Discord. Les modales indiquent quoi saisir et l’effet de la validation ; les fermer ramène au menu précédent.
 
@@ -61,7 +61,7 @@ Les boutons gris servent à naviguer (filtres, recherche, pages, Retour, Accueil
 
 Pour passer un panneau existant en V2 après reconstruction de l’image : arrêter le bot, exécuter `docker compose run --rm bot node dist/cli.js setup`, puis `docker compose up -d`. Le même message est mis à jour. Aucun nouvel import n’est nécessaire. La conversion d’un message en V2 est définitive côté Discord ; les mises à jour et déplacements du panneau conservent ce format. Les anciens boutons publics restent utilisables pendant la transition.
 
-Les commandes admin ont une permission Discord par défaut `Administrator`, en plus du contrôle du rôle admin configuré côté bot. Si ce rôle n’a pas `Administrator`, lui autoriser explicitement `/nexus-admin` dans les paramètres d’intégration Discord.
+Les commandes admin ont une permission Discord par défaut `Administrator`, en plus du contrôle du rôle admin configuré côté bot. Si ce rôle n’a pas `Administrator`, lui autoriser explicitement `/nexus-admin` et `/nexus-status` dans les paramètres d’intégration Discord.
 
 ### Importer les anciens jeux
 

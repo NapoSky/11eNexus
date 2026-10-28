@@ -46,6 +46,7 @@ export interface AdminDraft {
 }
 export type AdminRoute =
   | { page: 'home' }
+  | { page: 'status' }
   | { page: 'requests' | 'catalogue'; filter: string; query: string; index: number }
   | { page: 'request' | 'game'; id: string; back: AdminRoute }
   | { page: 'prepare'; draft: AdminDraft }
@@ -237,8 +238,11 @@ export class AdminViews {
     };
     const slice = <T>(items: T[], index: number) => items.slice(index * 20, index * 20 + 20);
     if (notice) line(`${error ? '⚠️' : '✅'} ${notice}`);
-    if (route.page === 'home') {
-      title('a.title', 'a.homeHelp');
+    if (route.page === 'home' || route.page === 'status') {
+      title(
+        route.page === 'status' ? 'a.statusTitle' : 'a.title',
+        route.page === 'status' ? 'a.statusHelp' : 'a.homeHelp',
+      );
       const games = repo.games(),
         last = repo.get<{ at: number; rotation: boolean }>('lastReconciliation');
       line(
@@ -257,15 +261,16 @@ export class AdminViews {
         }),
       );
       line(last ? t('a.lastSync', { date: `<t:${Math.floor(last.at / 1000)}:R>` }) : t('a.noSync'));
-      for (const [key, help, action] of [
-        ['a.requests', 'a.requestsHelp', 'requests'],
-        ['a.catalogue', 'a.catalogueHelp', 'catalogue'],
-        ['a.maintenance', 'a.maintenanceHelp', 'maintenance'],
-        ['a.panels', 'a.panelsHelp', 'panels'],
-      ]) {
-        line(`### ${t(key!)}\n${t(help!)}`);
-        controls(b(key!, action!));
-      }
+      if (route.page === 'home')
+        for (const [key, help, action] of [
+          ['a.requests', 'a.requestsHelp', 'requests'],
+          ['a.catalogue', 'a.catalogueHelp', 'catalogue'],
+          ['a.maintenance', 'a.maintenanceHelp', 'maintenance'],
+          ['a.panels', 'a.panelsHelp', 'panels'],
+        ]) {
+          line(`### ${t(key!)}\n${t(help!)}`);
+          controls(b(key!, action!));
+        }
     } else if (route.page === 'requests') {
       title('a.requests', 'a.requestsHelp');
       line(`-# ${t('a.historyRetention')}`);

@@ -96,7 +96,7 @@ export class AdminController {
   }
   accepts(i: Interaction): boolean {
     return (
-      (i.isChatInputCommand() && i.commandName === 'nexus-admin') ||
+      (i.isChatInputCommand() && ['nexus-admin', 'nexus-status'].includes(i.commandName)) ||
       ('customId' in i && /^(na:|nam:|nx:admin(?::|$))/.test(i.customId))
     );
   }
@@ -522,7 +522,8 @@ export class AdminController {
         ('customId' in i && i.customId.startsWith('nx:admin')) ||
         action === 'home'
       )
-        route = home;
+        route =
+          i.isChatInputCommand() && i.commandName === 'nexus-status' ? { page: 'status' } : home;
       else if (!s) {
         if (action === 'requests') route = list('requests');
         else if (action === 'maintenance') route = { page: 'maintenance' };

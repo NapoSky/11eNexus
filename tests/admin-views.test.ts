@@ -74,6 +74,7 @@ test.each(['fr', 'en'] as const)(
       },
       { page: 'repair', id: g.id, back: catalogue },
       { page: 'maintenance' },
+      { page: 'status' },
       { page: 'maintenance', progress: { phase: 'waiting', current: 0, total: 0 } },
       { page: 'maintenance', progress: { phase: 'resources', current: 0, total: 0 } },
       { page: 'maintenance', progress: { phase: 'activity', current: 150, total: 150 } },

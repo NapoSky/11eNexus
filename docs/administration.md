@@ -10,6 +10,8 @@ Les menus sont en français ou en anglais selon la langue Discord de l’admin. 
 
 L’accueil présente les jeux actifs et archivés, les demandes à traiter, les opérations à vérifier et la dernière réconciliation réussie. Il propose quatre rubriques.
 
+**`/nexus-status`** conserve un raccourci de consultation privé pour les admins : jeux actifs/archivés, demandes ouvertes, opérations à vérifier et dernière réconciliation réussie. Il affiche les données enregistrées, sans lancer de diagnostic ni de réconciliation. Le bouton **Accueil admin** permet ensuite d’ouvrir le panneau.
+
 ## Demandes
 
 La liste affiche les demandes à traiter par défaut, avec recherche, pagination, filtre « À préciser » et historique des trente derniers jours.
@@ -91,7 +93,7 @@ docker compose run --rm bot node dist/cli.js setup
 docker compose up -d
 ```
 
-`setup` remplace l’enregistrement Discord par les deux accès `/nexus` et `/nexus-admin`, actualise le panneau membre et installe le panneau staff. Aucun nouvel import et aucune migration de schéma SQLite ne sont nécessaires. Une ancienne commande encore affichée dans le client ouvre l’accueil admin au lieu d’exécuter ses anciens paramètres.
+`setup` remplace l’enregistrement Discord par les accès `/nexus`, `/nexus-admin` et le raccourci `/nexus-status`, actualise le panneau membre et installe le panneau staff. Aucun nouvel import et aucune migration de schéma SQLite ne sont nécessaires. Une ancienne commande encore affichée dans le client ouvre l’accueil admin au lieu d’exécuter ses anciens paramètres.
 
 Le panneau staff utilise le salon déjà enregistré, sinon `ADMIN_CHANNEL_ID`. Pour en choisir un autre lors du premier déploiement, ajouter `--admin-channel ID` à `setup`. Si ce salon n’est pas privé, la publication staff est refusée sans changement de ses permissions. Les commandes déjà enregistrées et le bouton Administration du parcours membre permettent d’ouvrir l’espace privé et de choisir un salon approprié dans **Panneaux**.
 
