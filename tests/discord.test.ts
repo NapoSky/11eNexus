@@ -453,3 +453,45 @@ test('resource renaming checks conflicts and hierarchy before its first Discord 
   expect(channel.setName).toHaveBeenCalledWith('new-name', expect.any(String));
   expect(role.setName).toHaveBeenCalledWith('New name', expect.any(String));
 });
+
+test('leaving an activity scan stops before another message page or thread request', async () => {
+  const abort = new AbortController();
+  const reason = new Error('navigation changed');
+  const fetchActive = jest.fn(),
+    fetchArchived = jest.fn();
+  const fetch = jest.fn(async () => {
+    abort.abort(reason);
+    return new Collection();
+  });
+  const channel = {
+    type: ChannelType.GuildText,
+    messages: { fetch },
+    threads: { fetchActive, fetchArchived },
+  };
+  jest
+    .spyOn(gateway, 'guild')
+    .mockResolvedValue({ channels: { fetch: async () => channel } } as unknown as Guild);
+  await expect(gateway.activity(game(), now - 1000, abort.signal)).rejects.toBe(reason);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetchActive).not.toHaveBeenCalled();
+  expect(fetchArchived).not.toHaveBeenCalled();
+});
+test('leaving a resource scan prevents further requests after the in-flight batch', async () => {
+  const abort = new AbortController(),
+    fetchMe = jest.fn();
+  const reason = new Error('navigation changed');
+  jest.spyOn(gateway, 'guild').mockResolvedValue({
+    channels: { fetch: async () => new Collection() },
+    roles: { fetch: async () => new Collection() },
+    members: {
+      fetch: async () => {
+        abort.abort(reason);
+        return new Collection();
+      },
+      fetchMe,
+    },
+    fetchOnboarding: async () => ({}),
+  } as unknown as Guild);
+  await expect(gateway.snapshot(abort.signal)).rejects.toBe(reason);
+  expect(fetchMe).not.toHaveBeenCalled();
+});

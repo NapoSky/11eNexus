@@ -94,15 +94,19 @@ export class DiscordCommunity implements Community {
       },
     ];
   }
-  async snapshot(): Promise<World> {
+  async snapshot(signal?: AbortSignal): Promise<World> {
+    signal?.throwIfAborted();
     const guild = await this.guild();
+    signal?.throwIfAborted();
     const [channels, roles, members, onboarding] = await Promise.all([
       guild.channels.fetch(),
       guild.roles.fetch(),
       guild.members.fetch(),
       guild.fetchOnboarding(),
     ]);
+    signal?.throwIfAborted();
     const me = await guild.members.fetchMe();
+    signal?.throwIfAborted();
     const archiveIds = (this.repository.get<string[]>('archiveCategories') || []).filter(
       (id) => channels.get(id)?.type === ChannelType.GuildCategory,
     );
@@ -395,11 +399,18 @@ export class DiscordCommunity implements Community {
       logger.error({ event: 'admin_alert_failed', key: textKey, err });
     }
   }
-  private async latestHuman(channel: GuildBasedChannel, since: number): Promise<Activity> {
+  private async latestHuman(
+    channel: GuildBasedChannel,
+    since: number,
+    signal?: AbortSignal,
+  ): Promise<Activity> {
+    signal?.throwIfAborted();
     if (!('messages' in channel)) return { at: null, complete: false };
     let before: string | undefined;
     for (let page = 0; page < 20; page++) {
+      signal?.throwIfAborted();
       const messages = await channel.messages.fetch({ limit: 100, before });
+      signal?.throwIfAborted();
       if (messages.size === 0) return { at: null, complete: true };
       const ordered = [...messages.values()].sort(
         (a, b) => b.createdTimestamp - a.createdTimestamp,
@@ -413,22 +424,28 @@ export class DiscordCommunity implements Community {
     }
     return { at: null, complete: false };
   }
-  async activity(game: Game, since: number): Promise<Activity> {
+  async activity(game: Game, since: number, signal?: AbortSignal): Promise<Activity> {
+    signal?.throwIfAborted();
     if (!game.channelId) return { at: null, complete: false };
     const channel = await this.parent(game.channelId);
+    signal?.throwIfAborted();
     const observations: Activity[] = [];
     if (channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement)
-      observations.push(await this.latestHuman(channel, since));
+      observations.push(await this.latestHuman(channel, since, signal));
     if ('threads' in channel) {
+      signal?.throwIfAborted();
       const active = await channel.threads.fetchActive();
+      signal?.throwIfAborted();
       for (const thread of active.threads.values())
-        observations.push(await this.latestHuman(thread, since));
+        observations.push(await this.latestHuman(thread, since, signal));
       let before: Date | undefined;
       let finished = false;
       for (let page = 0; page < 20; page++) {
+        signal?.throwIfAborted();
         const archived = await channel.threads.fetchArchived({ limit: 100, before });
+        signal?.throwIfAborted();
         for (const thread of archived.threads.values())
-          observations.push(await this.latestHuman(thread, since));
+          observations.push(await this.latestHuman(thread, since, signal));
         const times = [...archived.threads.values()].map((t) => t.archiveTimestamp || 0);
         const oldest = Math.min(...times);
         if (!archived.hasMore || !times.length || oldest < since) {
@@ -442,14 +459,16 @@ export class DiscordCommunity implements Community {
         let privateBefore: Date | undefined;
         let privateFinished = false;
         for (let page = 0; page < 20; page++) {
+          signal?.throwIfAborted();
           const archived = await channel.threads.fetchArchived({
             type: 'private',
             fetchAll: true,
             limit: 100,
             before: privateBefore,
           });
+          signal?.throwIfAborted();
           for (const thread of archived.threads.values())
-            observations.push(await this.latestHuman(thread, since));
+            observations.push(await this.latestHuman(thread, since, signal));
           const times = [...archived.threads.values()].map((t) => t.archiveTimestamp || 0);
           const oldest = Math.min(...times);
           if (!archived.hasMore || !times.length || oldest < since) {

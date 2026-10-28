@@ -65,8 +65,8 @@ export interface Activity {
   complete: boolean;
 }
 export interface Community {
-  snapshot(): Promise<World>;
-  activity(game: Game, since: number): Promise<Activity>;
+  snapshot(signal?: AbortSignal): Promise<World>;
+  activity(game: Game, since: number, signal?: AbortSignal): Promise<Activity>;
   createChannel(game: Game, operationId: string): Promise<string>;
   createRole(game: Game, asset: Asset | null, operationId: string): Promise<string>;
   move(game: Game, archive: boolean, operationId: string): Promise<void>;

@@ -231,7 +231,7 @@ export class Administration {
     signal?.throwIfAborted();
     const { nexus } = this;
     const repo = nexus.repository;
-    const world = await nexus.community.snapshot();
+    const world = await nexus.community.snapshot(signal);
     signal?.throwIfAborted();
     if (!world.complete) throw new DomainError('incomplete');
     const changes: MaintenancePreview['changes'] = [];
@@ -286,7 +286,7 @@ export class Administration {
       }
       if (game.state === 'active') {
         const activity = await nexus.community
-          .activity(game, this.now() - 30 * DAY)
+          .activity(game, this.now() - 30 * DAY, signal)
           .catch(() => ({ at: null, complete: false }));
         if (activity.at && activity.at > (game.lastActivityAt ?? 0))
           game.lastActivityAt = activity.at;
