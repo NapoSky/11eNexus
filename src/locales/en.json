@@ -268,7 +268,7 @@
   "a.parent": "Parent game icon",
   "a.upload": "Upload image",
   "a.preview": "Review changes",
-  "a.adminQuota": "Administrative actions do not consume the member’s 24-hour quota. Capacity limits still apply.",
+  "a.adminQuota": "Your Admin role is exempt from addition, revival and request quotas. Capacity limits still apply.",
   "a.manual": "Return to manual entry",
   "a.parentHelp": "Choose an existing game image only. Its subscribers and roles will not be copied.",
   "a.repairHelp": "Select the channel and role that actually belong to this game. Missing resources will not be recreated.",

@@ -35,7 +35,7 @@ Rechercher un titre ou un alias, puis choisir une fiche. Les filtres distinguent
 - **Retirer du catalogue** : réservé à un jeu archivé ou indisponible. Le salon, les messages et le rôle restent conservés. Cela libère une place au catalogue, pas un emplacement physique dans les catégories Discord.
 - **Réparer les associations** : choisir un salon et un rôle existants par leurs noms, puis confirmer leurs associations et la normalisation des permissions. Les ressources manquantes ne sont pas recréées automatiquement.
 
-Les créations et relances administratives ainsi que l’approbation d’une demande ne consomment pas le quota membre de 24 h. Les plafonds de catalogue, de salons, de rôles et les contrôles de permissions restent applicables. L’admin qui décide et le bénéficiaire d’une demande sont distingués dans le journal. Ajouter ou relancer ne produit aucun abonnement ou ping implicite.
+Le rôle Admin est exempt des quotas membres d’ajout, de relance, de demande et de recherche, y compris depuis le parcours membre. Les anciens compteurs ne désactivent pas ses boutons. La limite anti-abus de cinquante demandes ouvertes ne bloque pas les demandes administratives. Les plafonds de catalogue, de salons, de rôles et les contrôles de permissions restent applicables. L’admin qui décide et le bénéficiaire d’une demande sont distingués dans le journal. Ajouter ou relancer ne produit aucun abonnement ou ping implicite.
 
 Un renommage Discord partiellement effectué reste journalisé et bloque le jeu pour vérification ; aucun salon n’est supprimé pour compenser une erreur.
 

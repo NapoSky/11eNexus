@@ -323,9 +323,13 @@ export class Nexus {
         if (pending.actorId === actor.id) return pending;
         throw new DomainError('alreadyProposed');
       }
-      if (this.repository.proposals(actor.id).some((p) => p.createdAt + DAY > this.now()))
+      if (
+        !actor.admin &&
+        this.repository.proposals(actor.id).some((p) => p.createdAt + DAY > this.now())
+      )
         throw new DomainError('proposalCooldown');
       if (
+        !actor.admin &&
         this.repository
           .proposals()
           .filter((p) => p.status === 'pending' || p.status === 'needs_info').length >= 50

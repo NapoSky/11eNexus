@@ -397,3 +397,58 @@ test('a failed role deletion cannot be treated as a completed recycle by subscri
   await f.nexus.synchronize(false);
   expect(f.repository.game(g.id)).toMatchObject({ blocked: true, roleState: 'present' });
 });
+
+test('admins can submit repeated game requests immediately while members retain the rolling 24-hour limit', async () => {
+  const administrator = { ...admin, member: true };
+  const first = await f.nexus.propose(administrator, 'Admin game 1', 'https://example.com/1', 'fr');
+  const second = await f.nexus.propose(
+    administrator,
+    'Admin game 2',
+    'https://example.com/2',
+    'fr',
+  );
+  expect(first.id).not.toBe(second.id);
+  expect(f.repository.cooldown(admin.id)).toBeNull();
+  await f.nexus.propose(member, 'Member game 1', 'https://example.com/m1', 'fr');
+  await expect(
+    f.nexus.propose(member, 'Member game 2', 'https://example.com/m2', 'fr'),
+  ).rejects.toMatchObject({ code: 'proposalCooldown' });
+  f.clock.at += DAY;
+  await expect(
+    f.nexus.propose(member, 'Member game 2', 'https://example.com/m2', 'fr'),
+  ).resolves.toMatchObject({ status: 'pending' });
+});
+test('admins bypass the request queue anti-abuse threshold but cannot create duplicate requests', async () => {
+  for (let i = 0; i < 50; i++)
+    f.repository.saveProposal({
+      id: `seed-${i}`,
+      actorId: member.id,
+      name: `Seed ${i}`,
+      url: 'https://example.com',
+      createdAt: now - 2 * DAY,
+      status: 'pending',
+      reason: null,
+      gameId: null,
+      locale: 'fr',
+    });
+  await expect(
+    f.nexus.propose(admin, 'Admin test game', 'https://example.com/admin', 'fr'),
+  ).resolves.toMatchObject({ actorId: admin.id });
+  await expect(
+    f.nexus.propose(member, 'Member test game', 'https://example.com/member', 'fr'),
+  ).rejects.toMatchObject({ code: 'capacity' });
+  await expect(f.nexus.propose(admin, 'Seed 1', 'https://example.com', 'fr')).rejects.toMatchObject(
+    { code: 'alreadyProposed' },
+  );
+});
+test('admin access does not waive request cooldown after the admin role is removed', async () => {
+  await f.nexus.propose(admin, 'Admin game', 'https://example.com', 'fr');
+  await expect(
+    f.nexus.propose(
+      { ...admin, admin: false, member: true },
+      'Another game',
+      'https://example.com/other',
+      'fr',
+    ),
+  ).rejects.toMatchObject({ code: 'proposalCooldown' });
+});

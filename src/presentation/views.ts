@@ -141,6 +141,7 @@ export class Views {
   }
   private quota(actor: Actor, language: Locale): { blocked: boolean; hint: string } {
     const t = translator(language);
+    if (actor.admin) return { blocked: false, hint: t('a.adminQuota') };
     if (
       this.repository
         .operations()

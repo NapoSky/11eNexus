@@ -487,11 +487,13 @@ export class Controller {
             );
             return;
           }
-          const key = `search:${actor.id}`;
-          const recent = this.nexus.repository.get<number[]>(key) || [];
-          const active = recent.filter((at) => at + 60000 > Date.now());
-          if (active.length >= 5) throw new DomainError('searchLimited');
-          this.nexus.repository.set(key, [...active, Date.now()]);
+          if (!actor.admin) {
+            const key = `search:${actor.id}`;
+            const recent = this.nexus.repository.get<number[]>(key) || [];
+            const active = recent.filter((at) => at + 60000 > Date.now());
+            if (active.length >= 5) throw new DomainError('searchLimited');
+            this.nexus.repository.set(key, [...active, Date.now()]);
+          }
           try {
             const candidates = await this.nexus.catalogue.search(query);
             await respond(

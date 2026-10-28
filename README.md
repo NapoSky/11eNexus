@@ -93,7 +93,7 @@ Après une panne, le bot observe Discord avant toute rotation. Les changements m
 
 L’administration est centralisée dans un panneau Components V2 : **Demandes**, **Catalogue**, **Maintenance** et **Panneaux**. Le message staff, le bouton Administration des menus privés et `/nexus-admin` ouvrent le même accueil. Les anciennes sous-commandes sont retirées à la réinstallation des commandes. Aucun identifiant ni commande n’est à recopier pour accepter/refuser une demande, choisir une image, ajouter/archiver/relancer/retirer un jeu ou réparer ses associations. Voir [le guide d’administration](docs/administration.md).
 
-Les consultations n’appliquent pas de mutation Discord. Réconciliation et rotation sont distinctes et demandent une confirmation après aperçu. Une modification du titre peut aussi aligner les noms Discord du salon et du rôle, sur choix explicite. Retirer un jeu conserve son salon, son historique et son rôle ; cela ne libère pas de place dans les catégories Discord. Les créations et relances admin ne consomment pas le quota membre de 24 h ; les plafonds restent applicables.
+Les consultations n’appliquent pas de mutation Discord. Réconciliation et rotation sont distinctes et demandent une confirmation après aperçu. Une modification du titre peut aussi aligner les noms Discord du salon et du rôle, sur choix explicite. Retirer un jeu conserve son salon, son historique et son rôle ; cela ne libère pas de place dans les catégories Discord. Le rôle Admin est exempt des quotas membres d’ajout, de relance, de demande et de recherche, dans les deux parcours ; les capacités du serveur et le quota global RAWG restent applicables.
 
 Pour lister les ressources suivies et strictement non suivies, utiliser la base de production :
 

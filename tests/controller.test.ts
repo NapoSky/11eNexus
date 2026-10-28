@@ -534,3 +534,20 @@ test('recoverable errors remain V2 and offer a safe return to the catalogue', as
   expect(select(response(back))[0]?.value).toBe(g.id);
   expect(f.community.move).not.toHaveBeenCalled();
 });
+
+test.each([true, false])(
+  'member-panel RAWG searches respect current admin=%s rather than old counters',
+  async (isAdmin) => {
+    const actor = { ...member, admin: isAdmin },
+      recent = Array(5).fill(Date.now()),
+      key = `search:${actor.id}`;
+    f.repository.set(key, recent);
+    jest.spyOn(gateway, 'actor').mockResolvedValue(actor);
+    const s = session(f.repository, actor.id, 'entry', {}),
+      i = modalSubmit(`nxm:catalogue:${s.id}`, { query: 'New game' }, false);
+    await controller.handle(i as unknown as Interaction);
+    expect(f.catalogue.search).toHaveBeenCalledTimes(isAdmin ? 1 : 0);
+    expect(f.repository.get(key)).toEqual(recent);
+    if (!isAdmin) expect(JSON.stringify(i.editReply.mock.calls)).toContain('Patiente');
+  },
+);

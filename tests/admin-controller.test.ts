@@ -519,3 +519,24 @@ test('changing a RAWG search preserves the last query rather than clearing the f
   expect(JSON.stringify(i.showModal.mock.calls)).toContain('Project Zomboid');
   expect(i.deferUpdate).not.toHaveBeenCalled();
 });
+
+test('admin RAWG searches can repeat during testing without consuming member search counters', async () => {
+  const key = `search:${admin.id}`,
+    recent = Array(5).fill(Date.now());
+  f.repository.set(key, recent);
+  const draft = {
+    name: '',
+    url: '',
+    assetId: null,
+    rawgId: null,
+    back: { page: 'home' } as AdminRoute,
+  };
+  let view = render({ page: 'prepare', draft });
+  for (let i = 0; i < 6; i++) {
+    const search = click(view, 'rawg');
+    await controller.handle(search as unknown as Interaction);
+    view = await run(submit(search, { query: `Game ${i}` }));
+  }
+  expect(f.catalogue.search).toHaveBeenCalledTimes(6);
+  expect(f.repository.get(key)).toEqual(recent);
+});

@@ -450,11 +450,6 @@ export class AdminController {
         } else if (action === 'rawg') {
           const draft = this.draft(route),
             query = i.fields.getTextInputValue('query').trim();
-          const key = `search:${actor.id}`,
-            recent = this.nexus.repository.get<number[]>(key) || [],
-            valid = recent.filter((at) => at + 60000 > Date.now());
-          if (valid.length >= 5) throw new DomainError('searchLimited');
-          this.nexus.repository.set(key, [...valid, Date.now()]);
           route = {
             page: 'results',
             draft,

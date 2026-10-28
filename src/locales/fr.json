@@ -268,7 +268,7 @@
   "a.parent": "Icône d’un jeu parent",
   "a.upload": "Joindre une image",
   "a.preview": "Voir le récapitulatif",
-  "a.adminQuota": "Les actions administratives ne consomment pas le quota membre de 24 h. Les plafonds restent applicables.",
+  "a.adminQuota": "Ton rôle Admin te dispense des quotas d’ajout, de relance et de demande. Les capacités restent applicables.",
   "a.manual": "Revenir à la saisie manuelle",
   "a.parentHelp": "Choisis uniquement le visuel d’un jeu existant. Ses abonnés et ses rôles ne seront pas copiés.",
   "a.repairHelp": "Sélectionne le salon et le rôle qui appartiennent réellement à ce jeu. Aucune ressource manquante ne sera recréée.",

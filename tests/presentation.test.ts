@@ -319,3 +319,41 @@ test('accepted archived requests open a game card without linking a hidden chann
     true,
   );
 });
+
+test.each(['fr', 'en'] as const)(
+  '%s member menus do not disable admin creation or revival because of old member counters or another pending action',
+  (language) => {
+    const actor = { ...admin, member: true },
+      archived = f.add(game({ state: 'archived' })),
+      other = f.add(game({ blocked: true }));
+    f.repository.setCooldown(actor.id, Date.now());
+    f.repository.saveOperation({
+      id: 'admin-partial',
+      gameId: other.id,
+      actorId: actor.id,
+      kind: 'create',
+      status: 'review',
+      startedAt: Date.now(),
+      data: {},
+      error: 'partial',
+    });
+    const candidate = {
+      id: 123,
+      name: 'A game',
+      studio: 'Studio',
+      released: null,
+      imageUrl: null,
+      url: 'https://rawg.io/games/123',
+    };
+    const add = views.candidate(actor, language, candidate, 'asset'),
+      revive = views.game(actor, language, archived.id);
+    expect(controls(add).find((n) => n.custom_id?.includes(':create:'))?.disabled).toBe(false);
+    expect(controls(revive).find((n) => n.custom_id?.includes(':activate:'))?.disabled).toBe(false);
+    expect(JSON.stringify(add)).toContain(translator(language)('a.adminQuota'));
+    expect(
+      controls(views.game(actor, language, other.id)).find((n) =>
+        n.custom_id?.includes(':subscribe:'),
+      )?.disabled,
+    ).toBe(true);
+  },
+);
