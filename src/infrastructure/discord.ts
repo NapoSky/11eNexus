@@ -8,6 +8,7 @@ import {
   escapeMarkdown,
   ChannelType,
   Client,
+  Collection,
   Events,
   GatewayIntentBits,
   Guild,
@@ -58,6 +59,31 @@ export class DiscordCommunity implements Community {
       admin: member.roles.cache.has(this.config.adminRoleId) || member.guild.ownerId === member.id,
     };
   }
+  private async listMembers(
+    guild: Guild,
+    signal?: AbortSignal,
+  ): Promise<Collection<string, GuildMember>> {
+    const members = new Collection<string, GuildMember>();
+    let after: string | undefined;
+    // Fetching all members over Gateway is limited to one request per 30s,
+    // shared by every session and process. REST pagination stays fresh and lets
+    // Discord.js handle its HTTP rate limits without reusing stale permissions.
+    for (;;) {
+      signal?.throwIfAborted();
+      const page = await guild.members.list({ limit: 1000, after, cache: false });
+      signal?.throwIfAborted();
+      let highest = after;
+      for (const [id, member] of page) {
+        if (!/^\d{17,20}$/.test(id) || (after && BigInt(id) <= BigInt(after)))
+          throw new DomainError('incomplete');
+        if (!highest || BigInt(id) > BigInt(highest)) highest = id;
+        members.set(id, member);
+      }
+      if (page.size < 1000) return members;
+      if (!highest || highest === after) throw new DomainError('incomplete');
+      after = highest;
+    }
+  }
   private overwrites(archive: boolean): OverwriteResolvable[] {
     return [
       { id: this.config.guildId, deny: [P.ViewChannel, P.SendMessages] },
@@ -102,7 +128,7 @@ export class DiscordCommunity implements Community {
     const [channels, roles, members, onboarding] = await Promise.all([
       guild.channels.fetch(),
       guild.roles.fetch(),
-      guild.members.fetch(),
+      this.listMembers(guild, signal),
       guild.fetchOnboarding(),
     ]);
     signal?.throwIfAborted();
@@ -615,7 +641,7 @@ export class DiscordCommunity implements Community {
     const guild = await this.guild();
     const channel = await guild.channels.fetch(requested || this.config.adminChannelId);
     if (channel?.type !== ChannelType.GuildText) throw new DomainError('configuration');
-    const [roles, members] = await Promise.all([guild.roles.fetch(), guild.members.fetch()]);
+    const [roles, members] = await Promise.all([guild.roles.fetch(), this.listMembers(guild)]);
     if (members.size < guild.memberCount) throw new DomainError('incomplete');
     // The persistent message is private; publication never rewrites staff-channel permissions.
     if (

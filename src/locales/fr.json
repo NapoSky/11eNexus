@@ -394,5 +394,6 @@
   "emptyHelp_recent": "Aucun ajout daté pour le moment. Le bouton « Tous » permet de retrouver le catalogue existant.",
   "recentUndatedHelp": "Les jeux historiques sans date d’ajout restent accessibles dans « Tous ». Les relances ne remontent pas ici.",
   "addedOn": "Ajouté le {{date}}",
-  "recentSearchModalHelp": "Recherche parmi les ajouts datés du serveur, du plus récent au plus ancien."
+  "recentSearchModalHelp": "Recherche parmi les ajouts datés du serveur, du plus récent au plus ancien.",
+  "discordRateLimited": "Discord demande d’attendre {{seconds}} s avant de réessayer cette action."
 }

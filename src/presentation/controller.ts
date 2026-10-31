@@ -35,6 +35,7 @@ import {
   type Mode,
 } from './views.js';
 import { logger, type AppLogger } from '../infrastructure/logger.js';
+import { interactionFailure } from './interaction-failure.js';
 
 const actions = new Set([
   'home',
@@ -731,10 +732,11 @@ export class Controller {
       }
       throw new DomainError('invalidInput');
     } catch (error) {
-      const key = error instanceof DomainError ? error.code : 'unknownError';
+      const failure = interactionFailure(error);
+      const key = failure.code;
       const details = { event: 'interaction_error', code: key, ...context(), err: error };
       if (key === 'expired') this.log.debug({ ...details, event: 'menu_expired' });
-      else if (error instanceof DomainError || unavailableResponse(error)) this.log.warn(details);
+      else if (failure.expected || unavailableResponse(error)) this.log.warn(details);
       else this.log.error(details);
       // A failed acknowledgement has an uncertain/expired token. Never send a second callback.
       if (unavailableResponse(error) || (acknowledgementAttempted && !i.deferred && !i.replied))
@@ -742,7 +744,7 @@ export class Controller {
       try {
         const payload = this.views.feedback(
           language,
-          t(key, error instanceof DomainError ? error.values : {}),
+          t(key, failure.values),
           true,
           !['forbidden', 'adminOnly'].includes(key),
           s,

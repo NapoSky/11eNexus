@@ -40,6 +40,7 @@ import { logger, type AppLogger } from '../infrastructure/logger.js';
 import { AdminViews, adminParent, type AdminDraft, type AdminRoute } from './admin-views.js';
 import { editView, ownedSession, Views, type View } from './views.js';
 import { locale, translator } from './i18n.js';
+import { interactionFailure } from './interaction-failure.js';
 
 type AdminInteraction =
   | ButtonInteraction
@@ -759,6 +760,7 @@ export class AdminController {
           language,
         );
       } else if (action === 'preview') {
+        phase = 'prepare_plan';
         if (route.page === 'prepare') {
           const d = route.draft;
           if (
@@ -787,7 +789,9 @@ export class AdminController {
           );
         } else if (route.page === 'panels') {
           if (!route.channelId) throw new DomainError('invalidInput');
+          phase = 'panel_preview_permissions';
           const permissions = await this.panelState(route.target, route.channelId);
+          phase = 'panel_preview_plan';
           route = await this.review(
             actor,
             route,
@@ -803,14 +807,18 @@ export class AdminController {
         await respond(this.views.working(language));
         if (a.kind === 'panel')
           await this.nexus.mutex.run(async () => {
+            phase = 'panel_confirm_permissions';
             if ((await this.panelState(a.target, a.channelId)) !== a.permissions)
               throw new DomainError('staleAction');
+            phase = 'panel_consume';
             await this.service.consume(actor!, plan);
+            phase = 'panel_publish';
             if (a.target === 'member') await this.installMember(a.channelId);
             else await this.installStaff(a.channelId);
             this.nexus.repository.audit('publish-panel', actor!.id, a.channelId, Date.now());
           });
         else {
+          phase = 'execute_plan';
           const p =
             a.kind === 'create' && a.proposalId
               ? this.nexus.repository.proposal(a.proposalId)
@@ -871,7 +879,8 @@ export class AdminController {
         this.log.debug({ event: 'admin_diagnostic_cancelled', ...context() });
         return;
       }
-      const code = err instanceof DomainError ? err.code : 'unknownError';
+      const failure = interactionFailure(err);
+      const code = failure.code;
       const details = {
         ...context(),
         event: 'admin_interaction_error',
@@ -882,7 +891,7 @@ export class AdminController {
         err,
       };
       if (code === 'expired') this.log.debug(details);
-      else if (err instanceof DomainError || terminal(err)) this.log.warn(details);
+      else if (failure.expected || terminal(err)) this.log.warn(details);
       else this.log.error(details);
       if (
         replyState?.current() === false ||
@@ -893,8 +902,8 @@ export class AdminController {
       try {
         const message =
           action === 'diagnose'
-            ? `${t('a.diagnosticFailed')}${code === 'unknownError' ? '' : `\n${t(code, err instanceof DomainError ? err.values : {})}`}`
-            : t(code, err instanceof DomainError ? err.values : {});
+            ? `${t('a.diagnosticFailed')}${code === 'unknownError' ? '' : `\n${t(code, failure.values)}`}`
+            : t(code, failure.values);
         const payload =
           actor?.admin && !['adminOnly', 'forbidden'].includes(code)
             ? this.views.render(

@@ -16,6 +16,7 @@ import { commands } from '../src/presentation/commands.js';
 import { session, type View } from '../src/presentation/views.js';
 import { admin, fixture, game, member } from './helpers.js';
 import { actionId, assertUniqueCustomIds, controls, nodes, select } from './component-helpers.js';
+import { memberRateLimit } from './discord-errors.js';
 let f: ReturnType<typeof fixture>,
   client: Client,
   gateway: DiscordCommunity,
@@ -866,4 +867,83 @@ test('status checks the current admin role after acknowledging the interaction',
   expect(controls(view)).toHaveLength(0);
   expect(JSON.stringify(view)).not.toContain('État de 11eNexus');
   expect(f.community.snapshot).not.toHaveBeenCalled();
+});
+
+test.each(['preview', 'confirm'] as const)(
+  'a rate-limited panel %s has a useful retry message and precise phase without publishing',
+  async (action) => {
+    const channel = {
+      id: 'panel',
+      name: 'nexus',
+      type: 0,
+      permissionOverwrites: { cache: new Collection() },
+    };
+    jest
+      .spyOn(gateway, 'guild')
+      .mockResolvedValue({ channels: { fetch: async () => channel } } as never);
+    const install = jest.spyOn(controller, 'installPanel').mockResolvedValue();
+    let source = render({ page: 'panels', target: 'member', channelId: channel.id });
+    if (action === 'confirm') source = await run(click(source, 'preview'));
+    f.community.snapshot.mockRejectedValueOnce(memberRateLimit());
+    const i = click(source, action);
+    const view = await run(i);
+    expect(JSON.stringify(view)).toContain('23 s');
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'discordRateLimited',
+        phase: action === 'preview' ? 'panel_preview_plan' : 'panel_consume',
+      }),
+    );
+    expect(log.error).not.toHaveBeenCalled();
+    expect(install).not.toHaveBeenCalled();
+    expect(i.deferUpdate).toHaveBeenCalled();
+    expect(i.reply).not.toHaveBeenCalled();
+  },
+);
+
+test('immediate panel preview and confirmation use fresh REST inventories without Gateway requests', async () => {
+  const channel = {
+    id: 'panel',
+    name: 'nexus',
+    parentId: null,
+    type: 0,
+    topic: null,
+    permissionOverwrites: { cache: new Collection() },
+    permissionsFor: () => ({ has: () => true }),
+  };
+  const freshMember = { id: admin.id, user: { bot: false }, roles: { cache: new Collection() } };
+  const list = jest.fn(async () => new Collection([[admin.id, freshMember]]));
+  const fetchAll = jest.fn(async () => {
+    throw memberRateLimit();
+  });
+  const guild = {
+    memberCount: 1,
+    features: [],
+    channels: {
+      fetch: async (id?: string) => (id ? channel : new Collection([[channel.id, channel]])),
+    },
+    roles: { fetch: async () => new Collection() },
+    members: {
+      list,
+      fetch: fetchAll,
+      fetchMe: async () => ({
+        permissions: { has: () => true },
+        roles: { highest: { comparePositionTo: () => 1 } },
+      }),
+    },
+    fetchOnboarding: async () => ({ prompts: new Collection() }),
+  };
+  jest.spyOn(gateway, 'guild').mockResolvedValue(guild as never);
+  f.community.snapshot.mockImplementation(() => gateway.snapshot());
+  const install = jest.spyOn(controller, 'installPanel').mockResolvedValue();
+  let view = render({ page: 'panels', target: 'member', channelId: channel.id });
+  view = await run(click(view, 'preview'));
+  expect(install).not.toHaveBeenCalled();
+  view = await run(click(view, 'confirm'));
+  expect(JSON.stringify(view)).toContain('Action terminée');
+  expect(install).toHaveBeenCalledWith(channel.id);
+  expect(list).toHaveBeenCalledTimes(2);
+  expect(list).toHaveBeenCalledWith({ limit: 1000, after: undefined, cache: false });
+  expect(fetchAll).not.toHaveBeenCalled();
+  expect(log.error).not.toHaveBeenCalled();
 });

@@ -1,4 +1,5 @@
 import { createLogger, safeError } from '../src/infrastructure/logger.js';
+import { memberRateLimit } from './discord-errors.js';
 
 test('Pino emits timestamped structured logs with numeric Discord codes and safe error context', () => {
   let output = '';
@@ -133,4 +134,32 @@ test('recognized SDK form errors retain their fixed code without logging field n
     errorCode: 'ModalSubmitInteractionFieldNotFound',
   });
   expect(JSON.stringify(safeError(error))).not.toContain('private-token');
+});
+
+test('real Gateway rate limit errors retain their type, opcode and retry delay without member payloads', () => {
+  let output = '';
+  const log = createLogger(
+    { format: 'json' },
+    {
+      write: (line: string) => {
+        output += line;
+      },
+    },
+  );
+  log.warn({ event: 'admin_interaction_error', err: memberRateLimit(23.5) });
+  const entry = JSON.parse(output);
+  expect(entry.err).toMatchObject({
+    type: 'GatewayRateLimitError',
+    errorCode: 'GatewayRateLimitError',
+    gatewayOpcode: 8,
+    retryAfterSeconds: 23.5,
+  });
+  expect(output).not.toContain('private-');
+  expect(output).not.toContain('payload');
+  expect(output).not.toContain('Request with opcode');
+  expect(safeError(new Error('private outer error', { cause: memberRateLimit() }))).toMatchObject({
+    errorCode: 'GatewayRateLimitError',
+    gatewayOpcode: 8,
+    retryAfterSeconds: 23,
+  });
 });

@@ -5,6 +5,7 @@ import { config } from '../src/infrastructure/config.js';
 import { nodes, controls, select, actionId } from './component-helpers.js';
 import { session } from '../src/presentation/views.js';
 import { admin, fixture, game, member } from './helpers.js';
+import { memberRateLimit } from './discord-errors.js';
 
 const log = {
   debug: jest.fn(),
@@ -615,3 +616,18 @@ test('recent games open privately and preserve sorting, search and page through 
   expect(saved.data).toMatchObject({ mode: 'recent', page: 0, query: 'Recent 4' });
   expect(f.catalogue.search).not.toHaveBeenCalled();
 });
+
+test.each(['fr', 'en'])(
+  'a member Gateway rate limit shows a localized retry delay after acknowledgement (%s)',
+  async (language) => {
+    jest.spyOn(f.nexus, 'newGameAlerts').mockRejectedValueOnce(memberRateLimit(22.1));
+    const i = { ...button('nx:new-game-alerts'), locale: language };
+    await controller.handle(i as unknown as Interaction);
+    expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+    expect(JSON.stringify(response(i))).toContain('23 s');
+    expect(JSON.stringify(response(i))).not.toContain('private-');
+    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ code: 'discordRateLimited' }));
+    expect(log.error).not.toHaveBeenCalled();
+    expect(i.reply).not.toHaveBeenCalled();
+  },
+);

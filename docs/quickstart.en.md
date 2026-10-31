@@ -55,3 +55,5 @@ To audit tracked and untracked resources against the production database, run `d
 Deployment is manual: pull the private repository, make a SQLite backup, then `docker compose up -d --build`. Back up the named volume using the CLI’s online SQLite backup command. Never remove the volume with `down -v`. See the [main guide](../README.md) for restoration and administration.
 
 [RAWG Free](https://rawg.io/apidocs) allows personal noncommercial use and requires attribution links, which Nexus displays. Nexus caps its own requests at 18,000 per UTC month and has no paid fallback or Twitch connection. GitHub workflows use your account’s included Actions allowance; keep paid budgets at zero for strict free-tier use.
+
+Member inventories and staff-channel privacy checks use fresh REST pagination, allowing previews and confirmations to follow one another within Discord limits. Gateway rate-limit failures retain their type, opcode and retry delay in logs, with a localized retry message in member and admin menus. Request payloads and member searches remain private.

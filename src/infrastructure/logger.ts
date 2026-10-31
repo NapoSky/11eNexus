@@ -13,6 +13,7 @@ const errorTypes = new Set([
   'HTTPError',
   'AbortError',
   'TimeoutError',
+  'GatewayRateLimitError',
   'ValidationError',
   'CombinedError',
 ]);

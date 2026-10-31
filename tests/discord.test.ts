@@ -7,6 +7,7 @@ import {
   ChannelType,
   PermissionFlagsBits as P,
   type Message,
+  type GuildMember,
 } from 'discord.js';
 import { DiscordCommunity, discordClient } from '../src/infrastructure/discord.js';
 import { config } from '../src/infrastructure/config.js';
@@ -337,15 +338,15 @@ test.each(['public', 'ordinary-role', 'member-overwrite', 'incomplete'])(
       memberCount: situation === 'incomplete' ? 3 : 2,
       roles: { everyone, fetch: async () => roles },
       channels: { fetch: jest.fn() },
-      members: { fetch: jest.fn(), fetchMe: async () => ({ id: 'bot' }) },
+      members: { list: jest.fn(), fetchMe: async () => ({ id: 'bot' }) },
     };
     const staff = {
-        id: 'staff',
+        id: '100000000000000004',
         user: { bot: false },
         guild,
         roles: { cache: new Collection([[gateway.config.adminRoleId, staffRole]]) },
       },
-      regular = { id: 'member', user: { bot: false }, guild, roles: { cache: new Collection() } };
+      regular = { id: member.id, user: { bot: false }, guild, roles: { cache: new Collection() } };
     const set = jest.fn(),
       channel = {
         id: 'staff-channel',
@@ -354,7 +355,7 @@ test.each(['public', 'ordinary-role', 'member-overwrite', 'incomplete'])(
         permissionsFor: (target: { id: string }) => ({
           has: () =>
             target.id === 'bot' ||
-            target.id === 'staff' ||
+            target.id === staff.id ||
             target === staffRole ||
             (target === everyone && situation === 'public') ||
             (target === ordinaryRole && situation === 'ordinary-role') ||
@@ -362,10 +363,10 @@ test.each(['public', 'ordinary-role', 'member-overwrite', 'incomplete'])(
         }),
       };
     guild.channels.fetch.mockResolvedValue(channel);
-    guild.members.fetch.mockResolvedValue(
+    guild.members.list.mockResolvedValue(
       new Collection([
-        ['staff', staff],
-        ['member', regular],
+        [staff.id, staff],
+        [regular.id, regular],
       ]),
     );
     jest.spyOn(gateway, 'guild').mockResolvedValue(guild as unknown as Guild);
@@ -396,10 +397,10 @@ test('staff panel privacy accepts an already private channel without changing ov
     memberCount: 1,
     roles: { everyone, fetch: async () => roles },
     channels: { fetch: jest.fn() },
-    members: { fetch: jest.fn(), fetchMe: async () => ({ id: 'bot' }) },
+    members: { list: jest.fn(), fetchMe: async () => ({ id: 'bot' }) },
   };
   const staff = {
-      id: 'staff',
+      id: '100000000000000004',
       user: { bot: false },
       guild,
       roles: { cache: new Collection([[gateway.config.adminRoleId, staffRole]]) },
@@ -412,7 +413,7 @@ test('staff panel privacy accepts an already private channel without changing ov
       permissionsFor: (target: unknown) => ({ has: () => target !== everyone }),
     };
   guild.channels.fetch.mockResolvedValue(channel);
-  guild.members.fetch.mockResolvedValue(new Collection([['staff', staff]]));
+  guild.members.list.mockResolvedValue(new Collection([[staff.id, staff]]));
   jest.spyOn(gateway, 'guild').mockResolvedValue(guild as unknown as Guild);
   expect(await gateway.staffPanelChannel()).toBe(channel);
   expect(set).not.toHaveBeenCalled();
@@ -484,7 +485,7 @@ test('leaving a resource scan prevents further requests after the in-flight batc
     channels: { fetch: async () => new Collection() },
     roles: { fetch: async () => new Collection() },
     members: {
-      fetch: async () => {
+      list: async () => {
         abort.abort(reason);
         return new Collection();
       },
@@ -552,3 +553,113 @@ test.each(['missing', 'managed', 'privileged', 'above-bot'])(
     expect(remove).not.toHaveBeenCalled();
   },
 );
+
+function memberPage(start: number, count: number): Collection<string, GuildMember> {
+  return new Collection(
+    Array.from({ length: count }, (_, offset) => {
+      const id = (100000000000000000n + BigInt(start + offset)).toString();
+      return [
+        id,
+        {
+          id,
+          user: { bot: false },
+          roles: { cache: new Collection([[gateway.config.memberRoleId, {}]]) },
+        } as unknown as GuildMember,
+      ];
+    }),
+  );
+}
+function inventoryGuild(count: number, list: jest.Mock) {
+  const fetch = jest.fn(async () => {
+    throw new Error('Full Gateway fetch must not run');
+  });
+  const role = {
+    id: gateway.config.memberRoleId,
+    name: 'Member',
+    managed: false,
+    permissions: { bitfield: 0n },
+    mentionable: false,
+    position: 1,
+  };
+  const guild = {
+    memberCount: count,
+    features: [],
+    channels: { fetch: async () => new Collection() },
+    roles: { fetch: async () => new Collection([[role.id, role]]) },
+    members: {
+      list,
+      fetch,
+      fetchMe: jest.fn(async () => ({
+        permissions: { has: () => true },
+        roles: { highest: { comparePositionTo: () => 1 } },
+      })),
+    },
+    fetchOnboarding: async () => ({ prompts: new Collection() }),
+  };
+  jest.spyOn(gateway, 'guild').mockResolvedValue(guild as unknown as Guild);
+  return guild;
+}
+
+test('resource snapshots read every REST member page using the highest snowflake cursor', async () => {
+  const first = memberPage(0, 1000),
+    second = memberPage(1000, 2);
+  const list = jest
+    .fn()
+    .mockResolvedValueOnce(new Collection([...first].reverse()))
+    .mockResolvedValueOnce(second);
+  const guild = inventoryGuild(1002, list);
+  const world = await gateway.snapshot();
+  expect(world.complete).toBe(true);
+  expect(world.memberIds).toHaveLength(1002);
+  expect(world.roles[0]?.members).toHaveLength(1002);
+  expect(list.mock.calls).toEqual([
+    [{ limit: 1000, after: undefined, cache: false }],
+    [{ limit: 1000, after: '100000000000000999', cache: false }],
+  ]);
+  expect(guild.members.fetch).not.toHaveBeenCalled();
+});
+
+test('consecutive snapshots observe role removals immediately without an expiring member cache', async () => {
+  const before = memberPage(0, 1),
+    after = memberPage(0, 1);
+  after.first()!.roles.cache.clear();
+  const list = jest.fn().mockResolvedValueOnce(before).mockResolvedValueOnce(after);
+  const guild = inventoryGuild(1, list);
+  expect((await gateway.snapshot()).roles[0]?.members).toHaveLength(1);
+  expect((await gateway.snapshot()).roles[0]?.members).toEqual([]);
+  expect(list).toHaveBeenCalledTimes(2);
+  expect(guild.members.fetch).not.toHaveBeenCalled();
+});
+
+test('a failed REST page rejects the snapshot instead of exposing a partial membership list', async () => {
+  const error = new Error('network unavailable');
+  const list = jest.fn().mockResolvedValueOnce(memberPage(0, 1000)).mockRejectedValueOnce(error);
+  inventoryGuild(1002, list);
+  await expect(gateway.snapshot()).rejects.toBe(error);
+});
+
+test('a short member list remains incomplete and cannot authorize reconciliation', async () => {
+  inventoryGuild(2, jest.fn().mockResolvedValue(memberPage(0, 1)));
+  expect((await gateway.snapshot()).complete).toBe(false);
+});
+
+test('repeated REST pages fail closed rather than looping or accepting stale members', async () => {
+  const page = memberPage(0, 1000),
+    list = jest.fn().mockResolvedValue(page);
+  inventoryGuild(1002, list);
+  await expect(gateway.snapshot()).rejects.toMatchObject({ code: 'incomplete' });
+  expect(list).toHaveBeenCalledTimes(2);
+});
+
+test('navigation cancellation prevents fetching another REST member page', async () => {
+  const abort = new AbortController(),
+    reason = new Error('navigation changed');
+  const list = jest.fn(async () => {
+    abort.abort(reason);
+    return memberPage(0, 1000);
+  });
+  const guild = inventoryGuild(1002, list);
+  await expect(gateway.snapshot(abort.signal)).rejects.toBe(reason);
+  expect(list).toHaveBeenCalledTimes(1);
+  expect(guild.members.fetchMe).not.toHaveBeenCalled();
+});

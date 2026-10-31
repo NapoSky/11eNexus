@@ -35,6 +35,8 @@ const hints: Record<string, string> = {
   ModalSubmitInteractionFieldEmpty: 'A required form field is empty.',
   GuildMembersTimeout:
     'Discord member inventory timed out. Check Gateway connectivity and Server Members Intent.',
+  GatewayRateLimitError:
+    'Discord rate-limited a Gateway request. Use REST pagination for full member inventories and respect retryAfterSeconds.',
   InteractionNotReplied: 'The interaction must be acknowledged before editing its reply.',
   4004: 'Discord rejected authentication. Check BOT_TOKEN.',
   4014: 'Enable Server Members Intent for the bot in the Discord developer portal.',
@@ -65,7 +67,28 @@ export function adminDiagnostic(error: unknown, stage: string): Record<string, u
   for (let depth = 0; depth < 4 && current && typeof current === 'object'; depth++) {
     if (visited.has(current)) break;
     visited.add(current);
-    const item = current as { code?: unknown; name?: unknown; message?: unknown; cause?: unknown };
+    const item = current as {
+      code?: unknown;
+      name?: unknown;
+      message?: unknown;
+      cause?: unknown;
+      data?: { opcode?: unknown; retry_after?: unknown };
+    };
+    if (item.name === 'GatewayRateLimitError') {
+      if (
+        typeof item.data?.opcode === 'number' &&
+        Number.isInteger(item.data.opcode) &&
+        item.data.opcode >= 0 &&
+        item.data.opcode <= 255
+      )
+        result.gatewayOpcode = item.data.opcode;
+      if (
+        typeof item.data?.retry_after === 'number' &&
+        Number.isFinite(item.data.retry_after) &&
+        item.data.retry_after >= 0
+      )
+        result.retryAfterSeconds = item.data.retry_after;
+    }
     if (typeof item.message === 'string') {
       const setting = /^(?:Missing|Invalid) configuration: ([A-Z][A-Z0-9_]{0,63})$/.exec(
         item.message,

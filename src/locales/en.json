@@ -394,5 +394,6 @@
   "emptyHelp_recent": "No dated additions yet. Use “All” to browse the existing catalogue.",
   "recentUndatedHelp": "Historical games without an addition date are still available in “All”. Revivals do not move up this list.",
   "addedOn": "Added {{date}}",
-  "recentSearchModalHelp": "Search the server’s dated additions, newest first."
+  "recentSearchModalHelp": "Search the server’s dated additions, newest first.",
+  "discordRateLimited": "Discord requires waiting {{seconds}} s before trying this action again."
 }
