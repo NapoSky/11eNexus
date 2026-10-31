@@ -84,7 +84,10 @@ test('the published panel includes a persistent Archives entry and never pings m
   const payload = JSON.parse(JSON.stringify(send.mock.calls[0]![0]));
   const buttons = controls(payload);
   expect(buttons.map((c) => c.custom_id)).toContain('nx:archives');
-  expect(buttons).toHaveLength(4);
+  expect(buttons.map((c) => c.custom_id)).toEqual(
+    expect.arrayContaining(['nx:recent', 'nx:new-game-alerts']),
+  );
+  expect(buttons).toHaveLength(6);
   expect(payload.allowedMentions).toEqual({ parse: [] });
 });
 test('a visitor without Syndiqué receives a private refusal before any domain action', async () => {
@@ -551,3 +554,64 @@ test.each([true, false])(
     if (!isAdmin) expect(JSON.stringify(i.editReply.mock.calls)).toContain('Patiente');
   },
 );
+
+test('new game alerts open privately, read Discord, and acknowledge before changing the role', async () => {
+  const subscription = jest.spyOn(f.nexus, 'newGameAlerts').mockResolvedValue(true);
+  const update = jest.spyOn(f.nexus, 'setNewGameAlerts').mockImplementation(async () => {
+    expect(disable.deferUpdate).toHaveBeenCalled();
+    return false;
+  });
+  jest.spyOn(gateway, 'actor').mockResolvedValue(member);
+  const entry = button('nx:new-game-alerts');
+  await controller.handle(entry as unknown as Interaction);
+  expect(subscription).toHaveBeenCalledWith(member);
+  expect(entry.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+  expect(entry.deferUpdate).not.toHaveBeenCalled();
+  const disable = click(response(entry), 'new-game-alerts-off');
+  await controller.handle(disable as unknown as Interaction);
+  expect(update).toHaveBeenCalledWith(member, false);
+  expect(actionId(response(disable), 'new-game-alerts-on')).toBeDefined();
+  expect(JSON.stringify(response(disable))).toContain('désactivées');
+  const back = click(response(disable), 'back');
+  await controller.handle(back as unknown as Interaction);
+  expect(JSON.stringify(response(back))).toContain('Jouer ensemble');
+});
+
+test('a revoked member cannot change new game alerts even with a valid personal session', async () => {
+  const update = jest.spyOn(f.nexus, 'setNewGameAlerts');
+  jest.spyOn(gateway, 'actor').mockResolvedValue({ ...member, member: false });
+  const s = session(f.repository, member.id, 'new-game-alerts', {});
+  const i = button(`nx:new-game-alerts-on:${s.id}`);
+  await controller.handle(i as unknown as Interaction);
+  expect(update).not.toHaveBeenCalled();
+  expect(i.deferUpdate).toHaveBeenCalled();
+});
+
+test('recent games open privately and preserve sorting, search and page through cards and pagination', async () => {
+  jest.spyOn(gateway, 'actor').mockResolvedValue(member);
+  for (let i = 0; i < 45; i++) f.add(game({ name: `Recent ${i}`, addedAt: Date.now() - i * 1000 }));
+  const entry = button('nx:recent');
+  await controller.handle(entry as unknown as Interaction);
+  expect(entry.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+  const next = click(response(entry), 'next');
+  await controller.handle(next as unknown as Interaction);
+  const ids = select(response(next)).map((o) => o.value);
+  const choose = {
+    ...click(response(next), 'game'),
+    values: [ids[0]],
+    isButton: () => false,
+    isStringSelectMenu: () => true,
+  };
+  await controller.handle(choose as unknown as Interaction);
+  const back = click(response(choose), 'back');
+  await controller.handle(back as unknown as Interaction);
+  expect(select(response(back)).map((o) => o.value)).toEqual(ids);
+  const search = click(response(back), 'search');
+  await controller.handle(search as unknown as Interaction);
+  const modal = search.showModal.mock.calls[0]![0] as { toJSON(): { custom_id: string } };
+  const submitted = modalSubmit(modal.toJSON().custom_id, { query: 'Recent 4' });
+  await controller.handle(submitted as unknown as Interaction);
+  const saved = f.repository.session(actionId(response(submitted), 'game').split(':')[2]!)!;
+  expect(saved.data).toMatchObject({ mode: 'recent', page: 0, query: 'Recent 4' });
+  expect(f.catalogue.search).not.toHaveBeenCalled();
+});

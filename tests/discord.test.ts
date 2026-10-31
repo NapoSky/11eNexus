@@ -495,3 +495,60 @@ test('leaving a resource scan prevents further requests after the in-flight batc
   await expect(gateway.snapshot(abort.signal)).rejects.toBe(reason);
   expect(fetchMe).not.toHaveBeenCalled();
 });
+
+test('new game announcements are bilingual and may mention only their configured alert role', async () => {
+  const send = jest.fn<Promise<{ id: string }>, [unknown]>(async () => ({ id: 'announcement' }));
+  jest.spyOn(gateway, 'guild').mockResolvedValue({
+    roles: { fetch: async () => ({ managed: false, permissions: { bitfield: 0n } }) },
+    channels: {
+      fetch: async (id: string) => {
+        expect(id).toBe('389733957890998294');
+        return { isTextBased: () => true, send };
+      },
+    },
+  } as unknown as Guild);
+  const g = game({ name: 'Game @everyone <@123> <@&456>' });
+  expect(await gateway.announceNewGame(g)).toBe('announcement');
+  const payload = send.mock.calls[0]![0] as unknown as {
+    content: string;
+    allowedMentions: unknown;
+    nonce: string;
+    enforceNonce: boolean;
+  };
+  expect(payload.content).toContain('rejoint les jeux du serveur');
+  expect(payload.content).toContain('has joined the server');
+  expect(payload.content).toContain(g.channelId);
+  expect(payload.allowedMentions).toEqual({
+    parse: [],
+    roles: [gateway.config.newGameRoleId],
+    users: [],
+    repliedUser: false,
+  });
+  expect(payload.nonce).toHaveLength(25);
+  expect(payload.enforceNonce).toBe(true);
+});
+
+test.each(['missing', 'managed', 'privileged', 'above-bot'])(
+  'the new game subscription rejects an unavailable %s role',
+  async (reason) => {
+    const add = jest.fn(),
+      remove = jest.fn();
+    const role =
+      reason === 'missing'
+        ? null
+        : {
+            managed: reason === 'managed',
+            permissions: { bitfield: reason === 'privileged' ? P.Administrator : 0n },
+            editable: reason !== 'above-bot',
+          };
+    jest.spyOn(gateway, 'guild').mockResolvedValue({
+      roles: { fetch: async () => role },
+      members: { fetch: async () => ({ roles: { add, remove } }) },
+    } as unknown as Guild);
+    await expect(
+      gateway.setSubscription(gateway.config.newGameRoleId, member.id, true),
+    ).rejects.toMatchObject({ code: 'newGameAlertsUnavailable' });
+    expect(add).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  },
+);

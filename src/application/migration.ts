@@ -194,6 +194,7 @@ export function buildPlan(
       state: entry.state,
       roleState: entry.createRole ? 'missing' : 'present',
       lastActivityAt: existing?.lastActivityAt || null,
+      addedAt: existing?.addedAt ?? null,
       activatedAt: existing?.activatedAt || Date.now(),
       awaitingActivity: false,
       assetId: existing?.assetId || null,

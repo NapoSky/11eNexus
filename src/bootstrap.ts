@@ -21,6 +21,7 @@ export function bootstrap() {
       roleReserve: settings.roleReserve,
       activeCategoryId: settings.activeCategoryId,
       notificationCooldown: settings.notificationCooldown,
+      newGameRoleId: settings.newGameRoleId,
     },
     undefined,
     { yield: () => setImmediate() },

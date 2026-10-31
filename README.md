@@ -9,17 +9,27 @@ Node 24 / Docker Node 26 · TypeScript 7 · discord.js · i18next · SQLite int�
 - Un panneau public bilingue, en lecture seule pour les membres. Les boutons ouvrent un parcours personnel dans la langue de Discord : catalogue, recherche, création, relance, abonnements et propositions.
 - Le bouton « Jeux » ouvre les jeux actifs ; « Archives » ouvre directement les jeux archivés, même si leurs salons sont cachés. Le catalogue personnel affiche le total et les comptes actifs/archivés ; le filtre permet aussi de tout afficher.
 - Accès réservé aux Syndiqués (`948308796416098395`) et aux admins configurés. Publication et configuration du panneau réservées aux admins. Les membres créent les jeux eux-mêmes après sélection et confirmation d’une fiche RAWG.
-- Un jeu créé ou relancé remonte dans « Jeux du moment ». Aucun abonnement ni ping automatique. Un premier message humain dans les 48 heures confirme son activité ; sinon il retourne aux archives.
+- Un jeu créé ou relancé remonte dans « Jeux du moment », sans abonnement automatique. Les nouveaux jeux sont annoncés dans « 🔎suggestions-de-greves » avec la seule mention du rôle « Nouveau Jeu » ; les relances et imports historiques ne déclenchent pas d’annonce. Un premier message humain dans les 48 heures confirme son activité ; sinon il retourne aux archives.
 - Ensuite : archivage après 30 jours sans message humain. Les quinze jeux établis les plus récemment actifs forment le socle protégé. Une relance provisoire ne chasse pas un jeu de ce socle. Les messages dans les fils et forums comptent aussi ; bots, webhooks et messages système sont ignorés. Les réactions ne comptent pas.
 - Un membre peut créer **ou** relancer un jeu par période glissante de 24 heures. Relancer un jeu déjà actif ne consomme pas ce quota.
 - Maximum 150 jeux au catalogue, une catégorie active de 50 salons et trois catégories d’archives de 50 salons chacune. Saturation : intervention admin, maintien du seuil de 30 jours. Les vocaux et évènements sont hors périmètre V1.
 - Les abonnements suivent les rôles Discord existants. Le bot peut recycler un rôle de notification archivé et sans autre usage lorsque la réserve de rôles est atteinte. Son icône et les préférences sont conservées en SQLite ; la relance crée un nouveau rôle et réabonne les membres encore présents. Les rôles historiques importés ne sont pas recyclés automatiquement.
 
+### Nouveautés et alertes
+
+« Nouveautés / Recently added », dans le panneau public et `/nexus`, ouvre une page privée avec les cinq premiers ajouts de la page et leur date relative, puis une liste de vingt jeux, du plus récent au plus ancien. La recherche, la pagination et le retour depuis une fiche conservent ce classement. Les autres filtres restent alphabétiques. La date d’ajout ne change pas à la relance. La migration `002` conserve les dates des créations réussies encore présentes dans le journal ; les jeux historiques sans date fiable restent dans « Tous », sans annonce rétroactive.
+
+« Alertes nouveautés / New game alerts » affiche l’état réel du rôle Discord et permet de le prendre ou de le retirer en privé. Ce réglage ne modifie ni la visibilité des salons ni les abonnements aux jeux. Un retrait manuel dans Discord est respecté.
+
+`NEW_GAME_ROLE_ID` désigne le rôle existant « Nouveau Jeu » (`1450484079228227674`), et `NEW_GAME_CHANNEL_ID` le salon des annonces (`389733957890998294`). Le bot doit pouvoir attribuer ce rôle sans permissions globales et écrire dans ce salon. Une création membre ou admin réussie publie une courte annonce bilingue et un lien vers le salon du jeu. Seul le rôle d’alertes peut être mentionné. Les réglages personnels Discord continuent de s’appliquer.
+
+L’annonce est journalisée séparément de la création : un échec ne remet pas le jeu en échec. Un envoi interrompu ou incertain exige une vérification de l’équipe, signalée en staff ; aucun renvoi automatique ne risque de doubler une annonce reçue ou supprimée manuellement. Les envois confirmés sont conservés trente jours, les envois non résolus sont préservés. Le déploiement nécessite une reconstruction de l’image et une mise à jour du panneau via `setup` ; aucune commande de test ne doit publier une annonce réelle.
+
 ### Mentions des joueurs
 
 Les rôles de notification sont **mentionnables par les membres** : chacun peut utiliser `@NomDuRôle` dans une discussion pour prévenir les abonnés du jeu. Cette propriété est activée lors de la création, de l’import ou d’une réparation explicite du rôle. Les notifications restent soumises aux préférences personnelles Discord.
 
-L’action facultative « Prévenir les joueurs », depuis la fiche personnelle d’un jeu actif, reste disponible : le bot mentionne uniquement le rôle concerné après vérification du rôle Syndiqué. Sa temporisation de 15 minutes par membre et jeu concerne uniquement ce bouton, pas les mentions manuelles. Tout `@everyone`, autre rôle ou utilisateur inséré dans son texte est privé de notification par `allowedMentions`. Les autres messages du bot n’envoient aucune mention automatique. [Référence officielle](https://docs.discord.com/developers/resources/message#allowed-mentions-object).
+L’action facultative « Prévenir les joueurs », depuis la fiche personnelle d’un jeu actif, reste disponible : le bot mentionne uniquement le rôle concerné après vérification du rôle Syndiqué. Sa temporisation de 15 minutes par membre et jeu concerne uniquement ce bouton, pas les mentions manuelles. Tout `@everyone`, autre rôle ou utilisateur inséré dans son texte est privé de notification par `allowedMentions`. Les annonces de nouveaux jeux mentionnent uniquement le rôle « Nouveau Jeu ». Les autres messages du bot ne déclenchent aucune mention automatique. [Référence officielle](https://docs.discord.com/developers/resources/message#allowed-mentions-object).
 
 Pour une instance déjà importée, arrêter le bot puis activer les mentions sur les seuls rôles du catalogue, sans refaire l’import :
 

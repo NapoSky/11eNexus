@@ -6,7 +6,7 @@
   "myNotifications": "Mes notifications",
   "homeHelp": "Choisis un jeu pour rejoindre son salon, fais revenir un jeu en pause ou règle tes notifications.",
   "panelPlayHelp": "Les jeux actifs sont ouverts aux Syndiqués. Dans les archives, tu peux faire revenir un ancien salon.",
-  "panelNotificationsHelp": "Choisis les jeux dont tu veux recevoir les mentions. Tu peux changer d’avis à tout moment.",
+  "panelNotificationsHelp": "Choisis les notifications de tes jeux ou les alertes pour les nouveaux ajouts.",
   "panelAddHelp": "Il manque un jeu ? Recherche son nom, vérifie la bonne édition et confirme son ajout.",
   "personalMenuHint": "Les boutons ouvrent un menu visible uniquement par toi.",
   "browseHelp_active": "Choisis un jeu pour ouvrir son salon ou recevoir ses notifications. Envie d’autre chose ? Regarde les archives.",
@@ -381,5 +381,18 @@
   "a.diagnosticComplete": "✅ Vérification terminée. Les résultats sont affichés ci-dessous.",
   "a.diagnosticFailed": "La vérification a échoué. Tu peux réessayer avec « Vérifier maintenant » ou revenir au menu. Si le problème persiste, consulte les journaux du bot.",
   "a.statusTitle": "État de 11eNexus",
-  "a.statusHelp": "Voici l’état enregistré du catalogue et des actions à traiter. Pour vérifier les ressources Discord, ouvre Maintenance depuis l’accueil admin."
+  "a.statusHelp": "Voici l’état enregistré du catalogue et des actions à traiter. Pour vérifier les ressources Discord, ouvre Maintenance depuis l’accueil admin.",
+  "recentGames": "Nouveautés",
+  "newGameAlerts": "Alertes nouveautés",
+  "newGameAlertsHelp": "Reçois les annonces de nouveaux jeux dans {{channel}}. Tu peux couper ces alertes à tout moment. Les relances ne sont pas annoncées.",
+  "newGameAlertsOn": "Tes alertes nouveautés sont activées. Les notifications dépendent aussi de tes réglages Discord.",
+  "newGameAlertsOff": "Tes alertes nouveautés sont désactivées.",
+  "newGameAlertsUnavailable": "Le rôle des alertes nouveautés est indisponible ou ne peut pas être attribué. Contacte l’équipe.",
+  "newGameAnnouncement": "🆕 **{{game}}** rejoint les jeux du serveur !",
+  "newGameAnnouncementNeedsReview": "Le jeu « {{game}} » a été ajouté, mais son annonce est à vérifier dans le salon des annonces. Aucun nouvel envoi automatique ne sera tenté pour éviter un doublon.",
+  "browseHelp_recent": "Les derniers jeux ajoutés, du plus récent au plus ancien. Choisis une fiche pour rejoindre son salon ou activer ses notifications.",
+  "emptyHelp_recent": "Aucun ajout daté pour le moment. Le bouton « Tous » permet de retrouver le catalogue existant.",
+  "recentUndatedHelp": "Les jeux historiques sans date d’ajout restent accessibles dans « Tous ». Les relances ne remontent pas ici.",
+  "addedOn": "Ajouté le {{date}}",
+  "recentSearchModalHelp": "Recherche parmi les ajouts datés du serveur, du plus récent au plus ancien."
 }

@@ -43,6 +43,11 @@ const actions = new Set([
   'browse-archived',
   'browse-all',
   'browse-subscribed',
+  'browse-recent',
+  'recent',
+  'new-game-alerts',
+  'new-game-alerts-on',
+  'new-game-alerts-off',
   'proposal-game',
   'games',
   'archives',
@@ -385,7 +390,7 @@ export class Controller {
                 value: typeof data.data.query === 'string' ? data.data.query : undefined,
               },
             ],
-            `${t(action === 'propose' ? 'addSearchModalHelp' : 'searchModalHelp')}\n\n${t('modalBackHint')}`,
+            `${t(action === 'propose' ? 'addSearchModalHelp' : data.kind === 'browse' && data.data.mode === 'recent' ? 'recentSearchModalHelp' : 'searchModalHelp')}\n\n${t('modalBackHint')}`,
           ),
         );
         return;
@@ -408,7 +413,14 @@ export class Controller {
       if (
         i.isChatInputCommand() ||
         i.isModalSubmit() ||
-        ['activate', 'create', 'subscribe', 'unsubscribe'].includes(action)
+        [
+          'activate',
+          'create',
+          'subscribe',
+          'unsubscribe',
+          'new-game-alerts-on',
+          'new-game-alerts-off',
+        ].includes(action)
       ) {
         actor = await this.gateway.actor(i.user.id);
         requireMember(actor);
@@ -471,7 +483,16 @@ export class Controller {
         }
         const query = i.fields.getTextInputValue('query').trim();
         if (action === 'search') {
-          await respond(this.views.browse(actor, language, 'all', 0, query));
+          const source = destination(s);
+          await respond(
+            this.views.browse(
+              actor,
+              language,
+              source.kind === 'browse' && source.mode === 'recent' ? 'recent' : 'all',
+              0,
+              query,
+            ),
+          );
           return;
         }
         if (action === 'catalogue') {
@@ -514,12 +535,34 @@ export class Controller {
         await respond(this.views.home(actor, language));
         return;
       }
-      if (['games', 'archives', 'notifications'].includes(action)) {
+      if (
+        action === 'new-game-alerts' ||
+        action === 'new-game-alerts-on' ||
+        action === 'new-game-alerts-off'
+      ) {
+        if (action !== 'new-game-alerts' && s?.kind !== 'new-game-alerts')
+          throw new DomainError('invalidInput');
+        const enabled =
+          action === 'new-game-alerts'
+            ? await this.nexus.newGameAlerts(actor)
+            : await this.nexus.setNewGameAlerts(actor, action === 'new-game-alerts-on');
+        await respond(
+          this.views.newGameAlerts(actor, language, enabled, this.gateway.config.newGameChannelId),
+        );
+        return;
+      }
+      if (['games', 'archives', 'notifications', 'recent'].includes(action)) {
         await respond(
           this.views.browse(
             actor,
             language,
-            action === 'archives' ? 'archived' : action === 'games' ? 'active' : 'subscribed',
+            action === 'recent'
+              ? 'recent'
+              : action === 'archives'
+                ? 'archived'
+                : action === 'games'
+                  ? 'active'
+                  : 'subscribed',
           ),
         );
         return;
@@ -528,7 +571,7 @@ export class Controller {
       if (action.startsWith('browse-') || action === 'clear') {
         if (s.kind !== 'browse') throw new DomainError('invalidInput');
         const mode = action === 'clear' ? (s.data.mode as Mode) : (action.slice(7) as Mode);
-        if (!['active', 'archived', 'all', 'subscribed'].includes(mode))
+        if (!['active', 'archived', 'all', 'subscribed', 'recent'].includes(mode))
           throw new DomainError('invalidInput');
         await respond(
           this.views.browse(
@@ -544,7 +587,10 @@ export class Controller {
       if (i.isStringSelectMenu()) {
         const selected = i.values[0];
         if (!selected) throw new DomainError('invalidInput');
-        if (action === 'filter' && ['active', 'archived', 'all', 'subscribed'].includes(selected)) {
+        if (
+          action === 'filter' &&
+          ['active', 'archived', 'all', 'subscribed', 'recent'].includes(selected)
+        ) {
           await respond(
             this.views.browse(actor, language, selected as Mode, 0, String(s.data.query || '')),
           );

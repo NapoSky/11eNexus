@@ -6,10 +6,17 @@ test('agreed policy and roles are defaults, with RAWG failure allowed without a 
     minActive: 15,
     maxArchives: 3,
     memberRoleId: '948308796416098395',
+    newGameRoleId: '1450484079228227674',
+    newGameChannelId: '389733957890998294',
     rawgKey: '',
   });
 });
 test.each([
+  { NEW_GAME_ROLE_ID: 'invalid' },
+  { NEW_GAME_ROLE_ID: '948308796416098395' },
+  { NEW_GAME_ROLE_ID: '1135603511627890750' },
+  { NEW_GAME_ROLE_ID: valid.GUILD_ID },
+  { NEW_GAME_CHANNEL_ID: 'invalid' },
   { MAX_GAMES: '151' },
   { MAX_ARCHIVE_CATEGORIES: '4' },
   { MAX_GAMES: '10' },

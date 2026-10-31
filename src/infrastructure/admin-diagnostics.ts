@@ -44,6 +44,7 @@ const reasons: Record<string, string> = {
   'Disallowed intents specified': 'DisallowedIntents',
   'An invalid token was provided.': 'TokenInvalid',
   'Migration checksum mismatch: 001': 'MigrationChecksumMismatch',
+  'Migration checksum mismatch: 002': 'MigrationChecksumMismatch',
 };
 const stageHints: Record<string, string> = {
   read_manifest: 'Check that /work/import-manifest.json exists and is readable by UID 1000.',
@@ -76,6 +77,8 @@ export function adminDiagnostic(error: unknown, stage: string): Record<string, u
           'GUILD_ID',
           'MEMBER_ROLE_ID',
           'ADMIN_ROLE_ID',
+          'NEW_GAME_ROLE_ID',
+          'NEW_GAME_CHANNEL_ID',
           'ADMIN_CHANNEL_ID',
           'ACTIVE_CATEGORY_ID',
           'PANEL_CHANNEL_ID',

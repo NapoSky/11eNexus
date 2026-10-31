@@ -146,3 +146,42 @@ test('icons reserved by a reviewed import survive cleanup until their reservatio
   expect(store.asset(asset.id)).toBeNull();
   expect(store.get('import-icon:game')).toBeUndefined();
 });
+
+test('the addition date migration preserves proven creation dates beyond operation retention and leaves imports undated', () => {
+  const created = game();
+  const imported = game();
+  const known = game({ addedAt: now - 1000 });
+  const failed = game();
+  for (const g of [created, imported, known, failed]) store.saveGame(g);
+  for (const [g, kind, status] of [
+    [created, 'create', 'completed'],
+    [imported, 'import', 'completed'],
+    [known, 'create', 'completed'],
+    [failed, 'create', 'review'],
+  ] as const) {
+    store.saveOperation({
+      id: `op-${g.id}`,
+      kind,
+      status,
+      actorId: member.id,
+      gameId: g.id,
+      startedAt: now - 500,
+      completedAt: status === 'completed' ? now : null,
+      data: {},
+      error: null,
+    });
+  }
+  store.db.prepare('DELETE FROM schema_migrations WHERE id=?').run('002');
+  store.close();
+  store = new Store(join(directory, 'live.sqlite'));
+  expect(store.game(created.id)?.addedAt).toBe(now);
+  expect(store.game(imported.id)?.addedAt).toBeNull();
+  expect(store.game(failed.id)?.addedAt).toBeNull();
+  expect(store.game(known.id)?.addedAt).toBe(now - 1000);
+  expect(store.get(`new-game-announcement:${created.id}`)).toBeUndefined();
+  store.maintain(now + 31 * 86400000);
+  expect(store.game(created.id)?.addedAt).toBe(now);
+  store.close();
+  store = new Store(join(directory, 'live.sqlite'));
+  expect(store.game(created.id)?.addedAt).toBe(now);
+});

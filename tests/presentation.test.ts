@@ -160,7 +160,14 @@ test.each(['fr', 'en'] as const)(
   '%s screens serialize as valid V2 messages within Discord limits',
   (language) => {
     for (let i = 0; i < 150; i++)
-      f.add(game({ name: `Game ${i}`, state: i < 15 ? 'active' : 'archived', assetId: 'asset' }));
+      f.add(
+        game({
+          name: `Game ${i}`,
+          state: i < 15 ? 'active' : 'archived',
+          assetId: 'asset',
+          addedAt: Date.now() - i * 1000,
+        }),
+      );
     const g = f.repository.games()[0]!;
     const candidate = {
       id: 123,
@@ -186,6 +193,8 @@ test.each(['fr', 'en'] as const)(
       views.movedPanel('123'),
       views.home(member, language),
       views.home(admin, language),
+      views.newGameAlerts(member, language, false, '389733957890998294'),
+      views.newGameAlerts(member, language, true, '389733957890998294'),
       views.game(member, language, g.id),
       views.candidates(member, language, 'Example', [candidate]),
       views.candidates(member, language, 'Unknown', []),
@@ -196,7 +205,7 @@ test.each(['fr', 'en'] as const)(
       views.proposal(member, language, proposal),
       views.feedback(language, 'Try again', true),
     ];
-    for (const mode of ['active', 'archived', 'all', 'subscribed'] as const) {
+    for (const mode of ['active', 'archived', 'all', 'subscribed', 'recent'] as const) {
       for (let page = 0; page < 8; page++)
         screens.push(views.browse(admin, language, mode, page, 'Game'));
     }
@@ -266,7 +275,7 @@ test('navigation is gray, adding/subscribing green, revival blue and unsubscribi
 test.each(['fr', 'en'] as const)(
   '%s empty views explain a next step and always offer home',
   (language) => {
-    for (const mode of ['active', 'archived', 'all', 'subscribed'] as const) {
+    for (const mode of ['active', 'archived', 'all', 'subscribed', 'recent'] as const) {
       const screen = views.browse(member, language, mode);
       expect(JSON.stringify(screen)).toContain(translator(language)(`emptyHelp_${mode}`));
       expect(controls(screen).some((n) => n.custom_id?.includes(':home:'))).toBe(true);
@@ -355,5 +364,32 @@ test.each(['fr', 'en'] as const)(
         n.custom_id?.includes(':subscribe:'),
       )?.disabled,
     ).toBe(true);
+  },
+);
+
+test.each(['fr', 'en'] as const)(
+  'the %s recent list sorts by creation, previews dates, and leaves undated history in All',
+  (language) => {
+    const a = f.add(game({ name: 'Zulu', addedAt: 1800000000000 }));
+    const b = f.add(
+      game({
+        name: 'Alpha',
+        addedAt: 1700000000000,
+        state: 'archived',
+        activatedAt: 1900000000000,
+      }),
+    );
+    const historical = f.add(game({ name: 'Historical', addedAt: null }));
+    f.add(game({ name: 'Retired', addedAt: 1900000000000, retired: true }));
+    const screen = views.browse(member, language, 'recent');
+    expect(select(screen).map((o) => o.value)).toEqual([a.id, b.id]);
+    expect(JSON.stringify(screen)).toContain('<t:1800000000:R>');
+    expect(JSON.stringify(screen)).toContain(translator(language)('recentUndatedHelp'));
+    expect(select(views.browse(member, language, 'all')).map((o) => o.value)).toContain(
+      historical.id,
+    );
+    expect(select(views.browse(member, language, 'recent', 0, 'alp')).map((o) => o.value)).toEqual([
+      b.id,
+    ]);
   },
 );

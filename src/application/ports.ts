@@ -76,6 +76,7 @@ export interface Community {
   subscription(roleId: string, memberId: string): Promise<boolean>;
   deleteRole(roleId: string, operationId: string): Promise<void>;
   notify(game: Game, actorId: string, message: string): Promise<void>;
+  announceNewGame(game: Game): Promise<string>;
   alert(key: string, textKey: string, values?: Record<string, string | number>): Promise<void>;
 }
 export interface Catalogue {

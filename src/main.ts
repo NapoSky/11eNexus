@@ -80,6 +80,7 @@ async function main(): Promise<void> {
     try {
       await app.nexus.maintain();
       await app.nexus.synchronize();
+      await app.nexus.deliverNewGameAnnouncements();
       lastSync = Date.now();
       health(true);
       const games = repository.games();

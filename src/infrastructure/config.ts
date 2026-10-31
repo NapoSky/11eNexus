@@ -5,6 +5,8 @@ export interface Config {
   rawgKey: string;
   memberRoleId: string;
   adminRoleId: string;
+  newGameRoleId: string;
+  newGameChannelId: string;
   adminChannelId: string;
   activeCategoryId: string;
   panelChannelId?: string;
@@ -36,6 +38,8 @@ export function config(env: NodeJS.ProcessEnv = process.env): Config {
     rawgKey: env.RAWG_API_KEY || '',
     memberRoleId: id('MEMBER_ROLE_ID', '948308796416098395'),
     adminRoleId: id('ADMIN_ROLE_ID', '1135603511627890750'),
+    newGameRoleId: id('NEW_GAME_ROLE_ID', '1450484079228227674'),
+    newGameChannelId: id('NEW_GAME_CHANNEL_ID', '389733957890998294'),
     adminChannelId: id('ADMIN_CHANNEL_ID', '1135602838542749756'),
     activeCategoryId: id('ACTIVE_CATEGORY_ID', '1163827775115890708'),
     panelChannelId: env.PANEL_CHANNEL_ID ? id('PANEL_CHANNEL_ID') : undefined,
@@ -52,5 +56,7 @@ export function config(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error('Invalid configuration: MIN_ACTIVE_GAMES');
   if (result.memberRoleId === result.adminRoleId)
     throw new Error('Invalid configuration: ADMIN_ROLE_ID');
+  if ([result.guildId, result.memberRoleId, result.adminRoleId].includes(result.newGameRoleId))
+    throw new Error('Invalid configuration: NEW_GAME_ROLE_ID');
   return result;
 }

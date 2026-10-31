@@ -6,7 +6,7 @@
   "myNotifications": "My notifications",
   "homeHelp": "Pick a game to join its channel, bring a paused game back or choose your notifications.",
   "panelPlayHelp": "Active games are open to Syndiqué members. Visit the archives to bring an old channel back.",
-  "panelNotificationsHelp": "Choose the games you want mentions for. You can change your mind at any time.",
+  "panelNotificationsHelp": "Choose notifications for your games or alerts for new additions.",
   "panelAddHelp": "Missing a game? Search its name, check the right edition and confirm its addition.",
   "personalMenuHint": "Buttons open a menu only you can see.",
   "browseHelp_active": "Choose a game to open its channel or receive notifications. Want something else? Check the archives.",
@@ -381,5 +381,18 @@
   "a.diagnosticComplete": "✅ Check complete. The results are shown below.",
   "a.diagnosticFailed": "The check failed. You can retry with “Check now” or return to the menu. If the problem persists, check the bot logs.",
   "a.statusTitle": "11eNexus status",
-  "a.statusHelp": "Here is the recorded catalogue state and the actions awaiting attention. To check Discord resources, open Maintenance from Admin home."
+  "a.statusHelp": "Here is the recorded catalogue state and the actions awaiting attention. To check Discord resources, open Maintenance from Admin home.",
+  "recentGames": "Recently added",
+  "newGameAlerts": "New game alerts",
+  "newGameAlertsHelp": "Receive new game announcements in {{channel}}. You can turn these alerts off at any time. Revivals are not announced.",
+  "newGameAlertsOn": "Your new game alerts are on. Notifications also depend on your Discord settings.",
+  "newGameAlertsOff": "Your new game alerts are off.",
+  "newGameAlertsUnavailable": "The new game alerts role is unavailable or cannot be assigned. Please contact the team.",
+  "newGameAnnouncement": "🆕 **{{game}}** has joined the server’s games!",
+  "newGameAnnouncementNeedsReview": "“{{game}}” was added, but its announcement needs checking in the announcements channel. No automatic resend will be attempted to avoid a duplicate.",
+  "browseHelp_recent": "The latest additions, newest first. Choose a game to open its channel or enable its notifications.",
+  "emptyHelp_recent": "No dated additions yet. Use “All” to browse the existing catalogue.",
+  "recentUndatedHelp": "Historical games without an addition date are still available in “All”. Revivals do not move up this list.",
+  "addedOn": "Added {{date}}",
+  "recentSearchModalHelp": "Search the server’s dated additions, newest first."
 }

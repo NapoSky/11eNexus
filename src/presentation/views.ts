@@ -37,13 +37,13 @@ export interface View {
   files: AttachmentBuilder[];
   allowedMentions: { parse: [] };
 }
-export type Mode = 'active' | 'archived' | 'all' | 'subscribed';
+export type Mode = 'active' | 'archived' | 'all' | 'subscribed' | 'recent';
 export type Destination =
   | { kind: 'home' }
   | { kind: 'browse'; mode: Mode; page: number; query: string }
   | { kind: 'proposals'; admin: boolean; page: number }
   | { kind: 'proposal'; id: string; admin: boolean; page: number };
-const modes: Mode[] = ['active', 'archived', 'all', 'subscribed'];
+const modes: Mode[] = ['active', 'archived', 'all', 'subscribed', 'recent'];
 const start: Destination = { kind: 'browse', mode: 'active', page: 0, query: '' };
 const text = (content: string) => new TextDisplayBuilder().setContent(content);
 const separator = () => new SeparatorBuilder().setDivider(true);
@@ -174,12 +174,21 @@ export class Views {
       text(`### ${fr('play')} / ${en('play')}\n${fr('panelPlayHelp')}\n${en('panelPlayHelp')}`),
     );
     c.addActionRowComponents(
-      row(button('Jeux actifs / Active games', 'games'), button('Archives', 'archives')),
+      row(
+        button('Nouveautés / Recently added', 'recent'),
+        button('Jeux actifs / Active games', 'games'),
+        button('Archives', 'archives'),
+      ),
     );
     c.addSeparatorComponents(separator()).addTextDisplayComponents(
       text(`### Notifications\n${fr('panelNotificationsHelp')}\n${en('panelNotificationsHelp')}`),
     );
-    c.addActionRowComponents(row(button('Mes notifications / My notifications', 'notifications')));
+    c.addActionRowComponents(
+      row(
+        button('Mes notifications / My notifications', 'notifications'),
+        button('Alertes nouveautés / New game alerts', 'new-game-alerts'),
+      ),
+    );
     c.addSeparatorComponents(separator()).addTextDisplayComponents(
       text(`### ${fr('addGame')} / ${en('addGame')}\n${fr('panelAddHelp')}\n${en('panelAddHelp')}`),
     );
@@ -222,10 +231,19 @@ export class Views {
       text(`### ${t('play')}\n${t('panelPlayHelp')}`),
     );
     c.addActionRowComponents(
-      row(button(t('activeGames'), 'games', s.id), button(t('archivedGames'), 'archives', s.id)),
+      row(
+        button(t('recentGames'), 'recent', s.id),
+        button(t('activeGames'), 'games', s.id),
+        button(t('archivedGames'), 'archives', s.id),
+      ),
     );
     c.addTextDisplayComponents(text(`### ${t('notifications')}\n${t('panelNotificationsHelp')}`));
-    c.addActionRowComponents(row(button(t('myNotifications'), 'notifications', s.id)));
+    c.addActionRowComponents(
+      row(
+        button(t('myNotifications'), 'notifications', s.id),
+        button(t('newGameAlerts'), 'new-game-alerts', s.id),
+      ),
+    );
     c.addTextDisplayComponents(text(`### ${t('addGame')}\n${t('panelAddHelp')}`));
     c.addActionRowComponents(
       row(
@@ -236,21 +254,50 @@ export class Views {
     if (actor.admin) c.addActionRowComponents(row(button(t('admin'), 'admin', s.id)));
     return view(c);
   }
+  newGameAlerts(actor: Actor, language: Locale, enabled: boolean, channelId: string): View {
+    const t = translator(language);
+    const s = session(this.repository, actor.id, 'new-game-alerts', { returnTo: { kind: 'home' } });
+    const c = heading(
+      new ContainerBuilder().setAccentColor(0x557c5b),
+      t('newGameAlerts'),
+      t('newGameAlertsHelp', { channel: `<#${channelId}>` }),
+    );
+    c.addTextDisplayComponents(text(t(enabled ? 'newGameAlertsOn' : 'newGameAlertsOff')));
+    c.addActionRowComponents(
+      row(
+        button(
+          t(enabled ? 'unsubscribe' : 'subscribe'),
+          enabled ? 'new-game-alerts-off' : 'new-game-alerts-on',
+          s.id,
+          enabled ? ButtonStyle.Danger : ButtonStyle.Success,
+        ),
+      ),
+    );
+    c.addActionRowComponents(this.navigation(language, s.id));
+    return view(c);
+  }
   browse(actor: Actor, language: Locale, mode: Mode = 'active', page = 0, query = ''): View {
     const t = translator(language);
     const catalogue = this.repository.games();
     const games = catalogue
       .filter((g) =>
-        mode === 'subscribed'
-          ? this.repository.subscribed(g.id, actor.id)
-          : mode === 'all' || g.state === mode,
+        mode === 'recent'
+          ? typeof g.addedAt === 'number' && Number.isFinite(g.addedAt) && g.addedAt > 0
+          : mode === 'subscribed'
+            ? this.repository.subscribed(g.id, actor.id)
+            : mode === 'all' || g.state === mode,
       )
       .filter(
         (g) =>
           !query ||
           [g.name, ...g.aliases].some((name) => normalize(name).includes(normalize(query))),
       )
-      .sort((a, b) => a.name.localeCompare(b.name, language));
+      .sort(
+        (a, b) =>
+          (mode === 'recent' ? (b.addedAt ?? 0) - (a.addedAt ?? 0) : 0) ||
+          a.name.localeCompare(b.name, language) ||
+          a.id.localeCompare(b.id),
+      );
     const maximum = Math.max(0, Math.ceil(games.length / 20) - 1);
     page = Math.max(0, Math.min(page, maximum));
     const slice = games.slice(page * 20, page * 20 + 20);
@@ -264,13 +311,15 @@ export class Views {
     const c = heading(
       new ContainerBuilder().setAccentColor(0x557c5b),
       t(
-        mode === 'subscribed'
-          ? 'myNotifications'
-          : mode === 'archived'
-            ? 'archivedGames'
-            : mode === 'all'
-              ? 'games'
-              : 'activeGames',
+        mode === 'recent'
+          ? 'recentGames'
+          : mode === 'subscribed'
+            ? 'myNotifications'
+            : mode === 'archived'
+              ? 'archivedGames'
+              : mode === 'all'
+                ? 'games'
+                : 'activeGames',
       ),
       t(`browseHelp_${mode}`),
     );
@@ -296,13 +345,15 @@ export class Views {
         ...modes.map((value) =>
           button(
             t(
-              value === 'subscribed'
-                ? 'myNotifications'
-                : value === 'active'
-                  ? 'activeGames'
-                  : value === 'archived'
-                    ? 'archivedGames'
-                    : 'all',
+              value === 'recent'
+                ? 'recentGames'
+                : value === 'subscribed'
+                  ? 'myNotifications'
+                  : value === 'active'
+                    ? 'activeGames'
+                    : value === 'archived'
+                      ? 'archivedGames'
+                      : 'all',
             ),
             `browse-${value}`,
             s.id,
@@ -313,6 +364,18 @@ export class Views {
     c.addSeparatorComponents(separator());
     if (query)
       c.addTextDisplayComponents(text(t('searchSummary', { query: escapeMarkdown(query) })));
+    if (mode === 'recent' && slice.length) {
+      c.addTextDisplayComponents(
+        text(
+          slice
+            .slice(0, 5)
+            .map((g) => `**${escapeMarkdown(g.name)}** · <t:${Math.floor(g.addedAt! / 1000)}:R>`)
+            .join('\n'),
+        ),
+      );
+    }
+    if (mode === 'recent' && catalogue.some((g) => !g.addedAt))
+      c.addTextDisplayComponents(text(t('recentUndatedHelp')));
     if (slice.length) {
       c.addTextDisplayComponents(text(t('chooseGameHelp'))).addActionRowComponents(
         row(
@@ -324,7 +387,7 @@ export class Views {
                 label: g.name.slice(0, 100),
                 value: g.id,
                 description:
-                  `${t(g.state)}${this.repository.subscribed(g.id, actor.id) ? ` · ${t('notificationsOnShort')}` : ''}`.slice(
+                  `${t(g.state)}${mode === 'recent' ? ` · ${t('addedOn', { date: new Intl.DateTimeFormat(language, { dateStyle: 'short', timeZone: 'Europe/Paris' }).format(g.addedAt!) })}` : ''}${this.repository.subscribed(g.id, actor.id) ? ` · ${t('notificationsOnShort')}` : ''}`.slice(
                     0,
                     100,
                   ),

@@ -58,3 +58,14 @@ test('malformed JSON is identified without including the potentially private inp
   expect(result.errorCode).toBe('SyntaxError');
   expect(JSON.stringify(result)).not.toContain('secret-token');
 });
+
+test('addition date migration and alert configuration failures retain safe actionable hints', () => {
+  expect(
+    adminDiagnostic(new Error('Migration checksum mismatch: 002'), 'initialization'),
+  ).toMatchObject({ reason: 'MigrationChecksumMismatch' });
+  for (const setting of ['NEW_GAME_ROLE_ID', 'NEW_GAME_CHANNEL_ID']) {
+    expect(
+      adminDiagnostic(new Error(`Invalid configuration: ${setting}`), 'initialization'),
+    ).toMatchObject({ setting });
+  }
+});

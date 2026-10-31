@@ -108,6 +108,7 @@ export class FakeCommunity implements MigrationCommunity {
     this.world.roles = this.world.roles.filter((r) => r.id !== id);
   });
   notify = jest.fn(async () => {});
+  announceNewGame = jest.fn(async () => 'announcement-message');
   alert = jest.fn(async () => {});
   prepareImportedRole = jest.fn(async (id: string) => {
     const role = this.world.roles.find((r) => r.id === id);
@@ -171,6 +172,7 @@ export function fixture(minActive = 15) {
       roleReserve: 5,
       activeCategoryId: activeId,
       notificationCooldown: 900000,
+      newGameRoleId: '1450484079228227674',
     },
     clock,
   );

@@ -11,6 +11,8 @@ export interface Game {
   roleState: RoleState;
   state: GameState;
   lastActivityAt: number | null;
+  /** First successful creation in Nexus; absent/null for undated historical imports. */
+  addedAt?: number | null;
   activatedAt: number;
   awaitingActivity: boolean;
   assetId: string | null;

@@ -40,6 +40,13 @@ export interface Policy {
   roleReserve: number;
   activeCategoryId: string;
   notificationCooldown: number;
+  newGameRoleId: string;
+}
+interface NewGameAnnouncement {
+  status: 'pending' | 'sending' | 'sent' | 'review';
+  createdAt: number;
+  sentAt?: number;
+  messageId?: string;
 }
 export class Nexus {
   readonly mutex = new Mutex();
@@ -53,6 +60,46 @@ export class Nexus {
   ) {}
   private now(): number {
     return this.clock.now();
+  }
+  private queueNewGameAnnouncement(game: Game): void {
+    const key = `new-game-announcement:${game.id}`;
+    if (!this.repository.get(key))
+      this.repository.set(key, {
+        status: 'pending',
+        createdAt: this.now(),
+      } satisfies NewGameAnnouncement);
+  }
+  private async deliverNewGameAnnouncement(game: Game): Promise<void> {
+    const key = `new-game-announcement:${game.id}`;
+    const item = this.repository.get<NewGameAnnouncement>(key);
+    if (!item || item.status === 'sent' || item.status === 'review') return;
+    // A process may have stopped after Discord accepted the message. Never replay
+    // an uncertain send, even if the message was subsequently deleted manually.
+    if (item.status === 'sending' || game.blocked || game.retired || game.state !== 'active') {
+      this.repository.set(key, { ...item, status: 'review' });
+      await this.community.alert(`announcement:${game.id}`, 'newGameAnnouncementNeedsReview', {
+        game: game.name,
+      });
+      return;
+    }
+    this.repository.set(key, { ...item, status: 'sending' });
+    try {
+      const messageId = await this.community.announceNewGame(game);
+      this.repository.set(key, { ...item, status: 'sent', sentAt: this.now(), messageId });
+    } catch {
+      this.repository.set(key, { ...item, status: 'review' });
+      await this.community.alert(`announcement:${game.id}`, 'newGameAnnouncementNeedsReview', {
+        game: game.name,
+      });
+    }
+  }
+  async deliverNewGameAnnouncements(): Promise<void> {
+    await this.mutex.run(async () => {
+      for (const game of this.repository.games(true)) {
+        await this.scheduler.yield();
+        await this.deliverNewGameAnnouncement(game);
+      }
+    });
   }
   private game(id: string): Game {
     const game = this.repository.game(id);
@@ -203,6 +250,7 @@ export class Nexus {
       beneficiaryId: beneficiaryId || actor.id,
       roleName: game.name,
       previousRoleIds: world.roles.map((r) => r.id),
+      announceNewGame: true,
     });
     try {
       game.channelId = await this.community.createChannel(game, op.id);
@@ -212,11 +260,14 @@ export class Nexus {
       this.repository.saveGame(game);
       game.state = 'active';
       game.activatedAt = this.now();
-      this.repository.saveGame(game);
-      if (!actor.admin) this.repository.setCooldown(actor.id, this.now());
-      this.finish(op, 'completed');
-      this.repository.audit('create', actor.id, game.id, this.now());
-      return game;
+      game.addedAt = this.now();
+      this.repository.transaction(() => {
+        this.repository.saveGame(game);
+        if (!actor.admin) this.repository.setCooldown(actor.id, this.now());
+        this.finish(op, 'completed');
+        this.repository.audit('create', actor.id, game.id, this.now());
+        this.queueNewGameAnnouncement(game);
+      });
     } catch (error) {
       game.blocked = true;
       this.repository.saveGame(game);
@@ -224,6 +275,8 @@ export class Nexus {
       await this.community.alert(`partial:${op.id}`, 'partial', { game: game.name });
       throw new DomainError('partial', { game: game.name });
     }
+    await this.deliverNewGameAnnouncement(game);
+    return game;
   }
   async activate(actor: Actor, id: string, guard?: MutationGuard): Promise<Game> {
     requireMember(actor);
@@ -271,6 +324,24 @@ export class Nexus {
         await this.community.alert(`partial:${op.id}`, 'partial', { game: game.name });
         throw new DomainError('partial', { game: game.name });
       }
+    });
+  }
+  async newGameAlerts(actor: Actor): Promise<boolean> {
+    requireMember(actor);
+    return this.community.subscription(this.policy.newGameRoleId, actor.id);
+  }
+  async setNewGameAlerts(actor: Actor, enabled: boolean): Promise<boolean> {
+    requireMember(actor);
+    return this.mutex.run(async () => {
+      const roleId = this.policy.newGameRoleId;
+      if (this.repository.games(true).some((game) => game.roleId === roleId))
+        throw new DomainError('newGameAlertsUnavailable');
+      if ((await this.community.subscription(roleId, actor.id)) !== enabled)
+        await this.community.setSubscription(roleId, actor.id, enabled);
+      const actual = await this.community.subscription(roleId, actor.id);
+      if (actual !== enabled) throw new DomainError('newGameAlertsUnavailable');
+      this.repository.audit('new-game-alerts', actor.id, enabled ? 'on' : 'off', this.now());
+      return actual;
     });
   }
   async subscribe(actor: Actor, id: string, enabled: boolean): Promise<boolean> {
@@ -598,8 +669,15 @@ export class Nexus {
       this.repository.replaceSubscribers(game.id, role.members);
       for (const op of this.repository
         .operations()
-        .filter((o) => o.gameId === id && (o.status === 'pending' || o.status === 'review')))
+        .filter((o) => o.gameId === id && (o.status === 'pending' || o.status === 'review'))) {
+        if (op.kind === 'create') {
+          game.addedAt ??= this.now();
+          this.repository.saveGame(game);
+          if (op.data.announceNewGame === true && game.state === 'active')
+            this.queueNewGameAnnouncement(game);
+        }
         this.finish(op, 'completed');
+      }
       this.repository.audit('repair', admin.id, id, this.now());
     });
   }
@@ -783,18 +861,22 @@ export class Nexus {
                 ? false
                 : !role;
         if (complete) {
-          if (op.kind === 'create') {
-            game.state = 'active';
-            game.activatedAt = op.startedAt;
-            game.awaitingActivity = true;
-            this.repository.saveGame(game);
-          }
-          this.finish(op, 'completed');
-          if (op.actorId && op.data.administrative !== true)
-            this.repository.setCooldown(
-              op.actorId,
-              Math.max(this.repository.cooldown(op.actorId) || 0, op.startedAt),
-            );
+          this.repository.transaction(() => {
+            if (op.kind === 'create') {
+              game.state = 'active';
+              game.activatedAt = op.startedAt;
+              game.addedAt ??= op.startedAt;
+              game.awaitingActivity = true;
+              this.repository.saveGame(game);
+              if (op.data.announceNewGame === true) this.queueNewGameAnnouncement(game);
+            }
+            this.finish(op, 'completed');
+            if (op.actorId && op.data.administrative !== true)
+              this.repository.setCooldown(
+                op.actorId,
+                Math.max(this.repository.cooldown(op.actorId) || 0, op.startedAt),
+              );
+          });
         } else {
           this.finish(op, 'review', op.error || 'interrupted');
           game.blocked = true;

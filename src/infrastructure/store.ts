@@ -21,18 +21,21 @@ export class Store implements Repository {
     this.db.exec(
       'CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, sha256 TEXT NOT NULL)',
     );
-    const sql = readFileSync(resolve(__dirname, '../../migrations/001-initial.sql'), 'utf8');
-    const hash = createHash('sha256').update(sql).digest('hex');
-    const applied = this.db.prepare('SELECT sha256 FROM schema_migrations WHERE id=?').get('001');
-    if (applied && applied.sha256 !== hash) {
-      this.db.close();
-      throw new Error('Migration checksum mismatch: 001');
+    for (const name of ['001-initial', '002-game-added-dates']) {
+      const id = name.slice(0, 3);
+      const sql = readFileSync(resolve(__dirname, `../../migrations/${name}.sql`), 'utf8');
+      const hash = createHash('sha256').update(sql).digest('hex');
+      const applied = this.db.prepare('SELECT sha256 FROM schema_migrations WHERE id=?').get(id);
+      if (applied && applied.sha256 !== hash) {
+        this.db.close();
+        throw new Error(`Migration checksum mismatch: ${id}`);
+      }
+      if (!applied)
+        this.transaction(() => {
+          this.db.exec(sql);
+          this.db.prepare('INSERT INTO schema_migrations VALUES (?,?)').run(id, hash);
+        });
     }
-    if (!applied)
-      this.transaction(() => {
-        this.db.exec(sql);
-        this.db.prepare('INSERT INTO schema_migrations VALUES (?,?)').run('001', hash);
-      });
   }
   transaction<T>(task: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');
@@ -211,6 +214,11 @@ export class Store implements Repository {
         )
         .run(cutoff);
       this.db.prepare('DELETE FROM cooldowns WHERE at<=?').run(cutoff);
+      this.db
+        .prepare(
+          "DELETE FROM metadata WHERE key LIKE 'new-game-announcement:%' AND json_extract(value,'$.status')='sent' AND json_extract(value,'$.sentAt')<=?",
+        )
+        .run(cutoff);
       this.db
         .prepare(
           "DELETE FROM metadata WHERE (key LIKE 'import-icon:%' OR key LIKE 'admin-action:%') AND json_extract(value,'$.expiresAt')<=?",

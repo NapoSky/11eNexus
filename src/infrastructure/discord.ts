@@ -25,6 +25,7 @@ import type { Config } from './config.js';
 import { translator } from '../presentation/i18n.js';
 import { discordAttachment } from './images.js';
 import { logger } from './logger.js';
+import { createHash } from 'node:crypto';
 
 export function discordClient(): Client {
   return new Client({
@@ -320,6 +321,7 @@ export class DiscordCommunity implements Community {
     }
   }
   async setSubscription(roleId: string, memberId: string, enabled: boolean): Promise<void> {
+    if (roleId === this.config.newGameRoleId) await this.newGameRole(true);
     const member = await (await this.guild()).members.fetch({ user: memberId, force: true });
     if (enabled) await member.roles.add(roleId, '11eNexus: subscription');
     else await member.roles.remove(roleId, '11eNexus: subscription');
@@ -335,12 +337,42 @@ export class DiscordCommunity implements Community {
     );
   }
   async subscription(roleId: string, memberId: string): Promise<boolean> {
+    if (roleId === this.config.newGameRoleId) await this.newGameRole(false);
     return (
       await (await this.guild()).members.fetch({ user: memberId, force: true })
     ).roles.cache.has(roleId);
   }
   async deleteRole(id: string, operationId: string): Promise<void> {
     await (await this.guild()).roles.delete(id, `11eNexus op:${operationId}`);
+  }
+  private async newGameRole(editable: boolean) {
+    const role = await (await this.guild()).roles.fetch(this.config.newGameRoleId, { force: true });
+    if (!role || role.managed || role.permissions.bitfield !== 0n || (editable && !role.editable))
+      throw new DomainError('newGameAlertsUnavailable');
+    return role;
+  }
+  async announceNewGame(game: Game): Promise<string> {
+    if (!game.channelId || game.state !== 'active' || game.blocked || game.retired)
+      throw new DomainError('invalidInput');
+    await this.newGameRole(false);
+    const guild = await this.guild();
+    const channel = await guild.channels.fetch(this.config.newGameChannelId);
+    if (!channel?.isTextBased() || !('send' in channel)) throw new DomainError('configuration');
+    const fr = translator('fr'),
+      en = translator('en');
+    const name = escapeMarkdown(game.name);
+    const message = await channel.send({
+      nonce: createHash('sha256').update(`new-game:${game.id}`).digest('hex').slice(0, 25),
+      enforceNonce: true,
+      content: `<@&${this.config.newGameRoleId}>\n${fr('newGameAnnouncement', { game: name })}\n${en('newGameAnnouncement', { game: name })}\nhttps://discord.com/channels/${this.config.guildId}/${game.channelId}`,
+      allowedMentions: {
+        parse: [],
+        roles: [this.config.newGameRoleId],
+        users: [],
+        repliedUser: false,
+      },
+    });
+    return message.id;
   }
   async notify(game: Game, actorId: string, message: string): Promise<void> {
     const actor = await this.actor(actorId);
