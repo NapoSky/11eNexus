@@ -419,7 +419,7 @@
   "e.repair": "Vérifier et reprendre",
   "e.openChannel": "Ouvrir le salon",
   "e.preview": "Vérifier avant de confirmer",
-  "e.createPreview": "Un nouveau salon ouvert aux Syndiqués sera créé dans la catégorie des événements du moment, avec un rôle de notification propre à cet événement. Un message bilingue permettra de choisir ses notifications et sera épinglé. Aucun ping automatique.",
+  "e.createPreview": "Un nouveau salon ouvert aux Syndiqués sera créé dans la catégorie des événements, avec un rôle de notification propre à cet événement. Un message bilingue permettra de choisir ses notifications et sera épinglé. Aucun ping automatique.",
   "e.willAnnounce": "Une annonce avec lien sera publiée dans le salon du jeu, sans mention.",
   "e.noAnnouncement": "Pas d’annonce dans le jeu : aucun salon textuel actif adapté n’est disponible. Le jeu ne sera pas relancé.",
   "e.closePreview": "Le salon sera masqué aux membres et conservé dans les archives. Son rôle de notification sera supprimé. Cet événement ne pourra pas être rouvert.",

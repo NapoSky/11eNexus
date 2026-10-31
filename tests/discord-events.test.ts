@@ -69,7 +69,7 @@ test('category creation starts hidden and includes explicit bot pinning permissi
   } as unknown as Guild);
   await events.createCategory(false, 'operation');
   expect(create).toHaveBeenCalledWith(
-    expect.objectContaining({ name: 'Les événements du moment ╠════════════════' }),
+    expect.objectContaining({ name: 'Évènements ╠════════════════' }),
   );
   const payload = create.mock.calls[0]![0] as unknown as {
     permissionOverwrites: { id: string; allow?: bigint[]; deny?: bigint[] }[];
@@ -131,7 +131,7 @@ test('the first event places its category above games, sorts its channels, and t
   const games = category(gateway.config.activeCategoryId, 0),
     eventCategory = {
       ...category(active, 2),
-      name: 'Événements',
+      name: 'Les événements du moment ╠════════════════',
       setName: jest.fn(async (_name: string, _reason: string) => {}),
     },
     archives = category(archive, 3);
@@ -170,10 +170,10 @@ test('the first event places its category above games, sorts its channels, and t
   }));
   await events.layout(active, archive, true, ['100000000000000031', '100000000000000032']);
   expect(eventCategory.setName).toHaveBeenCalledWith(
-    'Les événements du moment ╠════════════════',
+    'Évènements ╠════════════════',
     '11eNexus: align event category style',
   );
-  eventCategory.name = 'Les événements du moment ╠════════════════';
+  eventCategory.name = 'Évènements ╠════════════════';
   const first = setPositions.mock.calls[0]![0] as unknown as {
     channel: string;
     position: number;

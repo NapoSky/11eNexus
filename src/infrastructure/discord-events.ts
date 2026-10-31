@@ -14,7 +14,8 @@ import type { DiscordCommunity } from './discord.js';
 import { eventAnnouncement, eventMessage } from '../presentation/event-messages.js';
 import { activeChannelPositions } from './active-channel-order.js';
 
-const EVENT_CATEGORY_NAME = 'Les événements du moment ╠════════════════';
+const EVENT_CATEGORY_NAME = 'Évènements ╠════════════════';
+const LEGACY_EVENT_CATEGORY_NAMES = ['Événements', 'Les événements du moment ╠════════════════'];
 const EVENT_ARCHIVE_CATEGORY_NAME = 'Archives Nexus · Events';
 
 export class DiscordEvents implements EventCommunity {
@@ -27,7 +28,9 @@ export class DiscordEvents implements EventCommunity {
   async recoverCategory(archived: boolean, operationId: string): Promise<string | null> {
     const guild = await this.gateway.guild();
     const logs = await guild.fetchAuditLogs({ type: AuditLogEvent.ChannelCreate, limit: 100 });
-    const names = archived ? [EVENT_ARCHIVE_CATEGORY_NAME] : [EVENT_CATEGORY_NAME, 'Événements'];
+    const names = archived
+      ? [EVENT_ARCHIVE_CATEGORY_NAME]
+      : [EVENT_CATEGORY_NAME, ...LEGACY_EVENT_CATEGORY_NAMES];
     const channels = await guild.channels.fetch();
     const matches = logs.entries.filter(
       (e) =>
@@ -423,7 +426,7 @@ export class DiscordEvents implements EventCommunity {
       if (children.some((c) => c && !world.channels.find((o) => o.id === c.id)?.hidden))
         throw new DomainError('needsReview');
     }
-    if (category.name === 'Événements')
+    if (LEGACY_EVENT_CATEGORY_NAMES.includes(category.name))
       await category.setName(EVENT_CATEGORY_NAME, '11eNexus: align event category style');
     await category.permissionOverwrites.set(
       this.overwrites(!active),
