@@ -7,6 +7,7 @@ import { DomainError } from './domain/model.js';
 import { languagesReady } from './presentation/i18n.js';
 import { logger } from './infrastructure/logger.js';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { ActiveChannelOrder } from './infrastructure/active-channel-order.js';
 
 async function main(): Promise<void> {
   await languagesReady;
@@ -19,6 +20,15 @@ async function main(): Promise<void> {
   let lastSync = 0;
   let busy = false;
   let syncing: Promise<void> = Promise.resolve();
+  const channelOrder = new ActiveChannelOrder(
+    client,
+    settings.guildId,
+    settings.activeCategoryId,
+    () =>
+      app.nexus.mutex.run(async () => {
+        if (!stopping && client.isReady()) await app.gateway.sortActiveGameChannels();
+      }),
+  );
   const loopDelay = monitorEventLoopDelay({ resolution: 20 });
   loopDelay.enable();
   const health = (ready: boolean) => {
@@ -51,6 +61,7 @@ async function main(): Promise<void> {
     if (scheduler) clearInterval(scheduler);
     loopDelay.disable();
     health(false);
+    await channelOrder.stop();
     await client.destroy();
     await syncing;
     await app.controller.drain();
@@ -71,6 +82,7 @@ async function main(): Promise<void> {
     void stop(1);
   });
   app.controller.listen();
+  channelOrder.listen();
   app.gateway.onActivity((id, at) => app.nexus.recordActivity(id, at));
   const synchronize = async () => {
     if (busy || stopping || !client.isReady()) return;
@@ -80,6 +92,7 @@ async function main(): Promise<void> {
     try {
       await app.nexus.maintain();
       await app.nexus.synchronize();
+      channelOrder.request();
       await app.nexus.deliverNewGameAnnouncements();
       lastSync = Date.now();
       health(true);

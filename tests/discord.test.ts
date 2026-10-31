@@ -33,6 +33,145 @@ test('the gateway never requests message content intent', () => {
   expect(client.options.intents.has(GatewayIntentBits.GuildMembers)).toBe(true);
   expect(client.options.intents.has(GatewayIntentBits.MessageContent)).toBe(false);
 });
+test('active ordering includes untracked forums, changes only positions and skips an already sorted category', async () => {
+  const active = gateway.config.activeCategoryId;
+  const permissionsFor = () => ({ has: () => true });
+  const channels = new Collection([
+    [active, { id: active, type: ChannelType.GuildCategory, parentId: null, permissionsFor }],
+    [
+      '10',
+      {
+        id: '10',
+        name: 'zulu',
+        rawPosition: 19,
+        type: ChannelType.GuildText,
+        parentId: active,
+        permissionsFor,
+      },
+    ],
+    [
+      '20',
+      {
+        id: '20',
+        name: 'alpha-forum',
+        rawPosition: 100,
+        type: ChannelType.GuildForum,
+        parentId: active,
+        permissionsFor,
+      },
+    ],
+    [
+      '30',
+      {
+        id: '30',
+        name: 'archive',
+        rawPosition: 0,
+        type: ChannelType.GuildText,
+        parentId: 'archive',
+        permissionsFor,
+      },
+    ],
+  ]);
+  const setPositions = jest.fn(async (positions: { channel: string; position: number }[]) => {
+    for (const p of positions) Object.assign(channels.get(p.channel)!, { rawPosition: p.position });
+  });
+  jest.spyOn(gateway, 'guild').mockResolvedValue({
+    channels: { fetch: async () => channels, setPositions },
+    members: { fetchMe: async () => ({}) },
+  } as unknown as Guild);
+  await gateway.sortActiveGameChannels();
+  expect(setPositions).toHaveBeenCalledWith([
+    { channel: '20', position: 0 },
+    { channel: '10', position: 1 },
+  ]);
+  await gateway.sortActiveGameChannels();
+  expect(setPositions).toHaveBeenCalledTimes(1);
+});
+test('ordering refuses missing permissions before sending a positional update', async () => {
+  const active = gateway.config.activeCategoryId;
+  const permissionsFor = () => ({ has: () => false });
+  const channels = new Collection([
+    [active, { id: active, type: ChannelType.GuildCategory, parentId: null, permissionsFor }],
+    [
+      '10',
+      {
+        id: '10',
+        name: 'zulu',
+        rawPosition: 0,
+        type: ChannelType.GuildText,
+        parentId: active,
+        permissionsFor,
+      },
+    ],
+    [
+      '20',
+      {
+        id: '20',
+        name: 'alpha',
+        rawPosition: 1,
+        type: ChannelType.GuildText,
+        parentId: active,
+        permissionsFor,
+      },
+    ],
+  ]);
+  const setPositions = jest.fn();
+  jest.spyOn(gateway, 'guild').mockResolvedValue({
+    channels: { fetch: async () => channels, setPositions },
+    members: { fetchMe: async () => ({}) },
+  } as unknown as Guild);
+  await expect(gateway.sortActiveGameChannels()).rejects.toMatchObject({ code: 'needsReview' });
+  expect(setPositions).not.toHaveBeenCalled();
+});
+test('ordering abandons a snapshot when a channel moves out while permissions are refreshed', async () => {
+  const active = gateway.config.activeCategoryId;
+  const permissionsFor = () => ({ has: () => true });
+  const zulu = {
+    id: '10',
+    name: 'zulu',
+    rawPosition: 0,
+    type: ChannelType.GuildText,
+    parentId: active as string | null,
+    permissionsFor,
+  };
+  const channels = new Collection([
+    [
+      active,
+      {
+        id: active,
+        name: 'active',
+        rawPosition: 0,
+        type: ChannelType.GuildCategory,
+        parentId: null,
+        permissionsFor,
+      },
+    ],
+    ['10', zulu],
+    [
+      '20',
+      {
+        id: '20',
+        name: 'alpha',
+        rawPosition: 1,
+        type: ChannelType.GuildText,
+        parentId: active,
+        permissionsFor,
+      },
+    ],
+  ]);
+  const setPositions = jest.fn();
+  jest.spyOn(gateway, 'guild').mockResolvedValue({
+    channels: { fetch: async () => channels, setPositions },
+    members: {
+      fetchMe: async () => {
+        zulu.parentId = 'archive';
+        return {};
+      },
+    },
+  } as unknown as Guild);
+  await gateway.sortActiveGameChannels();
+  expect(setPositions).not.toHaveBeenCalled();
+});
 test('new notification roles are mentionable with no global permissions', async () => {
   const create = jest.fn(async () => ({ id: 'new-role' }));
   jest.spyOn(gateway, 'guild').mockResolvedValue({ roles: { create } } as unknown as Guild);

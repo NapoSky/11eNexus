@@ -27,6 +27,7 @@ import { translator } from '../presentation/i18n.js';
 import { discordAttachment } from './images.js';
 import { logger } from './logger.js';
 import { createHash } from 'node:crypto';
+import { activeChannelPositions } from './active-channel-order.js';
 
 export function discordClient(): Client {
   return new Client({
@@ -46,6 +47,28 @@ export class DiscordCommunity implements Community {
   ) {}
   async guild(): Promise<Guild> {
     return this.client.guilds.fetch(this.config.guildId);
+  }
+  async sortActiveGameChannels(): Promise<void> {
+    const guild = await this.guild();
+    const channels = await guild.channels.fetch();
+    const category = channels.get(this.config.activeCategoryId);
+    if (category?.type !== ChannelType.GuildCategory) throw new DomainError('configuration');
+    const positions = activeChannelPositions(
+      [...channels.values()].filter((c): c is NonNullable<typeof c> => c !== null),
+      category.id,
+    );
+    if (!positions.length) return;
+    const me = await guild.members.fetchMe();
+    // Gateway updates can arrive while refreshing permissions. A manual move
+    // out of the category must not become a positional edit in its new parent.
+    if (positions.some((p) => channels.get(p.channel)?.parentId !== category.id)) return;
+    if (
+      !category.permissionsFor(me)?.has(P.ManageChannels) ||
+      positions.some((p) => !channels.get(p.channel)?.permissionsFor(me)?.has(P.ManageChannels))
+    )
+      throw new DomainError('needsReview');
+    await guild.channels.setPositions(positions);
+    logger.info({ event: 'active_channels_sorted', channels: positions.length });
   }
   async actor(id: string): Promise<Actor> {
     const guild = await this.guild();
