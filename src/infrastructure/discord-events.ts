@@ -14,6 +14,9 @@ import type { DiscordCommunity } from './discord.js';
 import { eventAnnouncement, eventMessage } from '../presentation/event-messages.js';
 import { activeChannelPositions } from './active-channel-order.js';
 
+const EVENT_CATEGORY_NAME = 'Les événements du moment ╠════════════════';
+const EVENT_ARCHIVE_CATEGORY_NAME = 'Archives Nexus · Events';
+
 export class DiscordEvents implements EventCommunity {
   constructor(readonly gateway: DiscordCommunity) {}
   async authorize(actorId: string, admin: boolean): Promise<void> {
@@ -24,7 +27,7 @@ export class DiscordEvents implements EventCommunity {
   async recoverCategory(archived: boolean, operationId: string): Promise<string | null> {
     const guild = await this.gateway.guild();
     const logs = await guild.fetchAuditLogs({ type: AuditLogEvent.ChannelCreate, limit: 100 });
-    const name = archived ? 'Archives Nexus · Events' : 'Événements';
+    const names = archived ? [EVENT_ARCHIVE_CATEGORY_NAME] : [EVENT_CATEGORY_NAME, 'Événements'];
     const channels = await guild.channels.fetch();
     const matches = logs.entries.filter(
       (e) =>
@@ -32,7 +35,7 @@ export class DiscordEvents implements EventCommunity {
         e.reason === `11eNexus event:${operationId}` &&
         e.targetId &&
         channels.get(e.targetId)?.type === ChannelType.GuildCategory &&
-        channels.get(e.targetId)?.name === name,
+        names.includes(channels.get(e.targetId)?.name || ''),
     );
     if (matches.size > 1) throw new DomainError('e.ambiguous');
     return matches.first()?.targetId || null;
@@ -157,7 +160,7 @@ export class DiscordEvents implements EventCommunity {
     const channels = await guild.channels.fetch();
     if (channels.size >= 500) throw new DomainError('capacity');
     const category = await guild.channels.create({
-      name: archived ? 'Archives Nexus · Events' : 'Événements',
+      name: archived ? EVENT_ARCHIVE_CATEGORY_NAME : EVENT_CATEGORY_NAME,
       type: ChannelType.GuildCategory,
       permissionOverwrites: this.overwrites(true),
       reason: `11eNexus event:${operationId}`,
@@ -420,6 +423,8 @@ export class DiscordEvents implements EventCommunity {
       if (children.some((c) => c && !world.channels.find((o) => o.id === c.id)?.hidden))
         throw new DomainError('needsReview');
     }
+    if (category.name === 'Événements')
+      await category.setName(EVENT_CATEGORY_NAME, '11eNexus: align event category style');
     await category.permissionOverwrites.set(
       this.overwrites(!active),
       '11eNexus event category visibility',

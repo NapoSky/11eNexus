@@ -419,7 +419,7 @@
   "e.repair": "Review and resume",
   "e.openChannel": "Open channel",
   "e.preview": "Review before confirming",
-  "e.createPreview": "A new channel open to Syndiqués and a notification role just for this event will be created. A bilingual message will let members choose notifications and will be pinned. No automatic ping.",
+  "e.createPreview": "A new channel open to Syndiqués will be created in the current events category, with a notification role just for this event. A bilingual message will let members choose notifications and will be pinned. No automatic ping.",
   "e.willAnnounce": "An announcement with a link will be posted in the game channel, without mentions.",
   "e.noAnnouncement": "No game announcement: no suitable active text channel is available. The game will not be brought back.",
   "e.closePreview": "The channel will be hidden from members and kept in the archives. Its notification role will be deleted. This event cannot be reopened.",
