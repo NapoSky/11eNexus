@@ -1,4 +1,10 @@
-import { archiveCandidates, channelName, DAY, normalize } from '../src/domain/model.js';
+import {
+  blocksMemberCreation,
+  archiveCandidates,
+  channelName,
+  DAY,
+  normalize,
+} from '../src/domain/model.js';
 import { game, now } from './helpers.js';
 
 test('30 days inclusively, preserving the fifteen most recently active established games', () => {
@@ -34,3 +40,31 @@ test('normalized aliases support accents and keep nonlatin game names', () => {
   expect(normalize('  Éco: 2 — 雪  ')).toBe('eco 2 雪');
   expect(channelName('Project Zomboid!')).toBe('project-zomboid');
 });
+
+test.each([
+  ['review', now - DAY, true, false],
+  ['review', now - DAY + 1, true, true],
+  ['pending', now - 100 * DAY, true, true],
+  ['completed', now, true, false],
+  ['review', now, false, false],
+] as const)(
+  'member creation guard handles %s timestamps and actor ownership',
+  (status, startedAt, owner, blocked) => {
+    expect(
+      blocksMemberCreation(
+        {
+          id: 'operation',
+          gameId: 'game',
+          actorId: owner ? 'member' : 'someone-else',
+          kind: 'create',
+          status,
+          startedAt,
+          data: {},
+          error: null,
+        },
+        'member',
+        now,
+      ),
+    ).toBe(blocked);
+  },
+);

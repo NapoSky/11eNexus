@@ -393,3 +393,32 @@ test.each(['fr', 'en'] as const)(
     ]);
   },
 );
+
+test.each([
+  ['review', 2, false],
+  ['review', 0, true],
+  ['pending', 2, true],
+  ['completed', 0, false],
+] as const)(
+  'creation controls apply the same %s operation window as the application (%s days old)',
+  (status, days, blocked) => {
+    const target = f.add(game({ state: 'archived' }));
+    f.repository.saveOperation({
+      id: 'other-action',
+      kind: 'create',
+      gameId: 'other-game',
+      actorId: member.id,
+      status,
+      startedAt: Date.now() - days * 86400000,
+      data: {},
+      error: null,
+    });
+    const screen = views.game(member, 'fr', target.id);
+    expect(controls(screen).find((n) => n.custom_id?.includes(':activate:'))?.disabled).toBe(
+      blocked,
+    );
+    expect(controls(screen).find((n) => n.custom_id?.includes(':subscribe:'))?.disabled).toBe(
+      false,
+    );
+  },
+);

@@ -5,7 +5,9 @@ import { discordClient, DiscordCommunity } from './infrastructure/discord.js';
 import { Nexus } from './application/nexus.js';
 import { Controller } from './presentation/controller.js';
 import { setImmediate } from 'node:timers/promises';
+import { requireNode26 } from './infrastructure/node-version.js';
 export function bootstrap() {
+  requireNode26();
   const settings = config();
   const repository = new Store(settings.databasePath);
   const client = discordClient();
@@ -22,6 +24,7 @@ export function bootstrap() {
       activeCategoryId: settings.activeCategoryId,
       notificationCooldown: settings.notificationCooldown,
       newGameRoleId: settings.newGameRoleId,
+      reservedRoleIds: [settings.guildId, settings.memberRoleId, settings.adminRoleId],
     },
     undefined,
     { yield: () => setImmediate() },

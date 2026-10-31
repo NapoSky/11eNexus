@@ -1,3 +1,4 @@
+import { recordInteraction } from './interaction-timing.js';
 import {
   LabelBuilder,
   TextDisplayBuilder,
@@ -17,6 +18,7 @@ import {
   requireAdmin,
   requireMember,
   type Actor,
+  type Candidate,
 } from '../domain/model.js';
 import type { Nexus } from '../application/nexus.js';
 import type { Session } from '../application/ports.js';
@@ -39,6 +41,7 @@ import {
 } from './views.js';
 import { logger, type AppLogger } from '../infrastructure/logger.js';
 import { interactionFailure } from './interaction-failure.js';
+import { Replies } from './replies.js';
 
 const actions = new Set([
   'home',
@@ -96,6 +99,16 @@ export class Controller {
   readonly events: EventService;
   readonly eventController: EventController;
   private readonly pending = new Set<Promise<void>>();
+  private readonly replies = new Replies();
+  private readonly shutdownReads = new AbortController();
+  private listening = false;
+  private readonly receive = (i: Interaction) => {
+    const task = this.handle(i).catch((err) =>
+      this.log.error({ event: 'interaction_handler_failed', err }),
+    );
+    this.pending.add(task);
+    void task.finally(() => this.pending.delete(task));
+  };
   constructor(
     readonly nexus: Nexus,
     readonly gateway: DiscordCommunity,
@@ -112,23 +125,32 @@ export class Controller {
         gateway.config.activeCategoryId,
         gateway.config.roleReserve,
       );
-    this.eventController = new EventController(this.events, gateway, (i) => this.actor(i), log);
+    this.eventController = new EventController(
+      this.events,
+      gateway,
+      (i) => this.actor(i),
+      log,
+      this.replies,
+    );
     this.administration = new AdminController(
       nexus,
       gateway,
       (i) => this.actor(i),
       (id) => this.installPanel(id),
       log,
+      this.replies,
+      this.shutdownReads.signal,
     );
   }
   listen(): void {
-    this.gateway.client.on(Events.InteractionCreate, (i) => {
-      const task = this.handle(i).catch((err) =>
-        this.log.error({ event: 'interaction_handler_failed', err }),
-      );
-      this.pending.add(task);
-      void task.finally(() => this.pending.delete(task));
-    });
+    if (this.listening || this.shutdownReads.signal.aborted) return;
+    this.listening = true;
+    this.gateway.client.on(Events.InteractionCreate, this.receive);
+  }
+  stopAccepting(): void {
+    this.listening = false;
+    this.gateway.client.off(Events.InteractionCreate, this.receive);
+    this.shutdownReads.abort();
   }
   async drain(): Promise<void> {
     await Promise.all([...this.pending]);
@@ -218,16 +240,13 @@ export class Controller {
   }
   async handle(interaction: Interaction): Promise<void> {
     if (this.eventController.accepts(interaction)) {
-      this.administration.invalidateReply(interaction);
       await this.eventController.handle(interaction);
       return;
     }
-    this.eventController.invalidateReply(interaction);
     if (this.administration.accepts(interaction)) {
       await this.administration.handle(interaction);
       return;
     }
-    this.administration.invalidateReply(interaction);
     if (interaction.isAutocomplete()) {
       let attempted = false;
       try {
@@ -305,9 +324,12 @@ export class Controller {
       replied: i.replied,
     });
     let s: Session | undefined;
+    const timingStartedAt = performance.now();
+    let outcome: 'completed' | 'failed' | 'cancelled' = 'completed';
+    const reply = this.replies.begin(i);
     const respond = async (payload: View) => {
       phase = 'edit_reply';
-      await i.editReply(editView(payload));
+      await reply.write(payload);
       phase = 'handle';
     };
     try {
@@ -422,16 +444,36 @@ export class Controller {
       acknowledgementAttempted = true;
       if (i.isButton() || i.isStringSelectMenu()) {
         if (s) await i.deferUpdate();
-        else await i.deferReply({ flags: MessageFlags.Ephemeral });
+        else {
+          const response = await i.deferReply({
+            flags: MessageFlags.Ephemeral,
+            withResponse: true,
+          });
+          reply.bind(response?.interaction?.responseMessageId);
+        }
       } else if (
         i.isModalSubmit() &&
         i.isFromMessage() &&
         i.message.flags.has(MessageFlags.Ephemeral)
       ) {
         await i.deferUpdate();
-      } else await i.deferReply({ flags: MessageFlags.Ephemeral });
+      } else {
+        const response = await i.deferReply({ flags: MessageFlags.Ephemeral, withResponse: true });
+        reply.bind(response?.interaction?.responseMessageId);
+      }
       this.log.debug({ event: 'interaction_acknowledged', ...context() });
       phase = 'handle';
+      if (
+        [
+          'create',
+          'activate',
+          'subscribe',
+          'unsubscribe',
+          'new-game-alerts-on',
+          'new-game-alerts-off',
+        ].includes(action)
+      )
+        await respond(this.views.waiting(language, s));
       // Fresh REST role observation for every state-changing operation after acknowledgement.
       if (
         i.isChatInputCommand() ||
@@ -519,6 +561,7 @@ export class Controller {
           return;
         }
         if (action === 'catalogue') {
+          reply.signal.throwIfAborted();
           const local = this.nexus.repository
             .games()
             .filter(
@@ -541,6 +584,7 @@ export class Controller {
           }
           try {
             const candidates = await this.nexus.catalogue.search(query);
+            reply.signal.throwIfAborted();
             await respond(
               this.views.candidates(actor, language, query, candidates, undefined, destination(s)),
             );
@@ -636,8 +680,18 @@ export class Controller {
             );
             return;
           }
+          reply.signal.throwIfAborted();
           const candidate = await this.nexus.catalogue.get(id);
-          const asset = await this.nexus.catalogue.image(candidate).catch(() => null);
+          reply.signal.throwIfAborted();
+          const asset = await this.nexus.catalogue.image(candidate, reply.signal).catch((error) => {
+            if (
+              reply.signal.aborted ||
+              (error instanceof DomainError && error.code === 'imageBusy')
+            )
+              throw error;
+            return null;
+          });
+          reply.signal.throwIfAborted();
           if (asset) this.nexus.repository.saveAsset(asset);
           await respond(
             this.views.candidate(
@@ -664,15 +718,11 @@ export class Controller {
       if (action === 'results') {
         if (s.kind !== 'candidate') throw new DomainError('invalidInput');
         const query = string(s, 'query');
+        reply.signal.throwIfAborted();
+        const candidates = await this.nexus.catalogue.search(query);
+        reply.signal.throwIfAborted();
         await respond(
-          this.views.candidates(
-            actor,
-            language,
-            query,
-            await this.nexus.catalogue.search(query),
-            undefined,
-            destination(s),
-          ),
+          this.views.candidates(actor, language, query, candidates, undefined, destination(s)),
         );
         return;
       }
@@ -720,7 +770,11 @@ export class Controller {
       }
       if (action === 'create') {
         if (s.kind !== 'candidate') throw new DomainError('invalidInput');
-        const game = await this.nexus.create(actor, Number(s.data.rawgId));
+        const preview =
+          s.data.candidate && typeof s.data.assetId === 'string'
+            ? { candidate: s.data.candidate as Candidate, assetId: s.data.assetId }
+            : undefined;
+        const game = await this.nexus.create(actor, Number(s.data.rawgId), undefined, preview);
         await respond(
           this.views.game(
             actor,
@@ -754,6 +808,12 @@ export class Controller {
       }
       throw new DomainError('invalidInput');
     } catch (error) {
+      outcome = 'failed';
+      if (reply.signal.aborted && error === reply.signal.reason) {
+        outcome = 'cancelled';
+        this.log.debug({ event: 'interaction_read_cancelled', ...context() });
+        return;
+      }
       const failure = interactionFailure(error);
       const key = failure.code;
       const details = { event: 'interaction_error', code: key, ...context(), err: error };
@@ -761,7 +821,11 @@ export class Controller {
       else if (failure.expected || unavailableResponse(error)) this.log.warn(details);
       else this.log.error(details);
       // A failed acknowledgement has an uncertain/expired token. Never send a second callback.
-      if (unavailableResponse(error) || (acknowledgementAttempted && !i.deferred && !i.replied))
+      if (
+        !reply.current() ||
+        unavailableResponse(error) ||
+        (acknowledgementAttempted && !i.deferred && !i.replied)
+      )
         return;
       try {
         const payload = this.views.feedback(
@@ -771,7 +835,7 @@ export class Controller {
           !['forbidden', 'adminOnly'].includes(key),
           s,
         );
-        if (i.deferred || i.replied) await i.editReply(editView(payload));
+        if (i.deferred || i.replied) await reply.write(payload);
         else
           await i.reply({
             ...payload,
@@ -780,6 +844,14 @@ export class Controller {
       } catch (err) {
         this.log.warn({ event: 'interaction_error_response_failed', ...context(), err });
       }
+    } finally {
+      recordInteraction(
+        this.log,
+        timingStartedAt,
+        { ...context(), surface: 'member' },
+        outcome,
+        !reply.current(),
+      );
     }
   }
   private returnView(actor: Actor, language: ReturnType<typeof locale>, target: Destination): View {

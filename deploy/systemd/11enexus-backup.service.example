@@ -1,0 +1,10 @@
+[Unit]
+Description=Create and verify a private 11eNexus backup
+
+[Service]
+Type=oneshot
+User=YOUR_DOCKER_USER
+WorkingDirectory=/opt/11eNexus
+UMask=0077
+TimeoutStartSec=5min
+ExecStart=/usr/bin/env node scripts/backup.mjs --directory /opt/11eNexus/backups

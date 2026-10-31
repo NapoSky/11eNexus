@@ -228,6 +228,7 @@ export class Store implements Repository {
       const started = this.get<number>('retentionStartedAt') ?? now;
       if (this.get('retentionStartedAt') === undefined) this.set('retentionStartedAt', started);
       const cutoff = now - ADMIN_RETENTION_MS;
+      this.purgePermissionSnapshots(now, cutoff, started);
       this.db
         .prepare(
           "DELETE FROM event_operations WHERE json_extract(data,'$.status')='completed' AND json_extract(data,'$.completedAt')<=?",
@@ -270,6 +271,40 @@ export class Store implements Repository {
       );
     });
   }
+  private purgePermissionSnapshots(now: number, cutoff: number, legacyStarted: number): void {
+    const owners = `WITH copies AS (
+      SELECT key, substr(key,length('permissionsBefore:')+1) AS suffix
+      FROM metadata WHERE key GLOB 'permissionsBefore:*'
+    ), owners AS (
+      SELECT key, CASE WHEN instr(suffix,':')=0 THEN suffix
+        ELSE substr(suffix,1,instr(suffix,':')-1) END AS owner FROM copies
+    )`;
+    // Resolve each owner by primary key, then purge its ACL copies atomically.
+    this.db
+      .prepare(
+        `${owners} DELETE FROM metadata WHERE key IN (
+      SELECT owners.key FROM owners JOIN operations ON operations.id=owners.owner
+      WHERE json_extract(data,'$.status') IN ('completed','failed')
+      AND COALESCE(json_extract(data,'$.completedAt'),MAX(json_extract(data,'$.startedAt'),?))<=?
+    )`,
+      )
+      .run(legacyStarted, cutoff);
+    const key = 'permissionSnapshotRetentionStartedAt';
+    const started = this.get<number>(key) ?? now;
+    if (this.get(key) === undefined) this.set(key, started);
+    if (started > cutoff) return;
+    // Old orphan copies lack a timestamp: allow a full rollout grace period.
+    // Import/adoption evidence and unresolved operations remain correlated and retained.
+    this.db
+      .prepare(
+        `${owners} DELETE FROM metadata WHERE key IN (
+      SELECT key FROM owners WHERE NOT EXISTS (SELECT 1 FROM operations WHERE id=owner)
+      AND NOT EXISTS (SELECT 1 FROM metadata WHERE key='migration:'||owner)
+      AND owner!=COALESCE((SELECT json_extract(value,'$.plan') FROM metadata WHERE key='archiveAdoption'),'')
+    )`,
+      )
+      .run();
+  }
   releaseLease(owner: string): void {
     this.db.prepare('DELETE FROM lease WHERE owner=?').run(owner);
   }
@@ -277,6 +312,14 @@ export class Store implements Repository {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     await backup(this.db, path);
     chmodSync(path, 0o600);
+    // Make the snapshot self-contained, including on a read-only restore mount.
+    // The online backup inherits WAL mode, which otherwise needs sidecar files.
+    const snapshot = new DatabaseSync(path);
+    try {
+      snapshot.exec('PRAGMA journal_mode=DELETE');
+    } finally {
+      snapshot.close();
+    }
   }
   close(): void {
     this.db.close();

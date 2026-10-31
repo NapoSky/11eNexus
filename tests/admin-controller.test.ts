@@ -122,7 +122,7 @@ test('member/admin entry and the status shortcut have no administrative subcomma
 test('a persistent staff button opens one localized private hub without mutations', async () => {
   const i = button('na:home');
   const view = await run(i);
-  expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+  expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral, withResponse: true });
   expect(i.deferUpdate).not.toHaveBeenCalled();
   for (const action of ['requests', 'catalogue', 'maintenance', 'panels'])
     expect(actionId(view, action, 'na')).toBeDefined();
@@ -772,28 +772,24 @@ test('a slow in-flight edit finishes before a newer page can edit the same priva
   expect(f.community.snapshot).not.toHaveBeenCalled();
 });
 
-test('a scan visibly waits for the shared mutex and leaving cancels the queued read', async () => {
+test('a diagnostic completes without waiting for the shared mutation mutex', async () => {
   const gate = deferred<void>(),
-    locked = deferred<void>(),
-    visible = deferred<void>();
+    locked = deferred<void>();
   const background = f.nexus.mutex.run(async () => {
     locked.resolve();
     await gate.promise;
   });
   await locked.promise;
-  const i = click(render({ page: 'maintenance' }), 'diagnose');
-  i.editReply.mockImplementation(async () => {
-    visible.resolve();
-  });
-  const pending = controller.handle(i as unknown as Interaction);
-  await visible.promise;
-  await new Promise<void>((resolve) => setImmediate(resolve));
-  expect(JSON.stringify(response(i))).toContain('attente de la fin des opérations');
-  expect(f.community.snapshot).not.toHaveBeenCalled();
-  await run(click(response(i), 'home'));
-  gate.resolve();
-  await Promise.all([pending, background]);
-  expect(f.community.snapshot).not.toHaveBeenCalled();
+  try {
+    const i = click(render({ page: 'maintenance' }), 'diagnose');
+    await controller.handle(i as unknown as Interaction);
+    expect(JSON.stringify(response(i))).toContain('Vérification terminée');
+    expect(f.community.snapshot).toHaveBeenCalledTimes(1);
+    expect(f.community.move).not.toHaveBeenCalled();
+  } finally {
+    gate.resolve();
+    await background;
+  }
 });
 test('returning to a member menu also invalidates an earlier admin diagnostic', async () => {
   const gate = deferred<typeof f.community.world>(),
@@ -831,7 +827,10 @@ test.each(['fr', 'en'])(
       commandName: 'nexus-status',
     };
     const view = await run(i);
-    expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+    expect(i.deferReply).toHaveBeenCalledWith({
+      flags: MessageFlags.Ephemeral,
+      withResponse: true,
+    });
     expect(JSON.stringify(view)).toContain(
       locale === 'fr' ? 'État de 11eNexus' : '11eNexus status',
     );
@@ -878,20 +877,19 @@ test.each(['preview', 'confirm'] as const)(
       type: 0,
       permissionOverwrites: { cache: new Collection() },
     };
-    jest
-      .spyOn(gateway, 'guild')
-      .mockResolvedValue({ channels: { fetch: async () => channel } } as never);
+    const fetch = jest.fn(async () => channel);
+    jest.spyOn(gateway, 'guild').mockResolvedValue({ channels: { fetch } } as never);
     const install = jest.spyOn(controller, 'installPanel').mockResolvedValue();
     let source = render({ page: 'panels', target: 'member', channelId: channel.id });
     if (action === 'confirm') source = await run(click(source, 'preview'));
-    f.community.snapshot.mockRejectedValueOnce(memberRateLimit());
+    fetch.mockRejectedValueOnce(memberRateLimit());
     const i = click(source, action);
     const view = await run(i);
     expect(JSON.stringify(view)).toContain('23 s');
     expect(log.warn).toHaveBeenCalledWith(
       expect.objectContaining({
         code: 'discordRateLimited',
-        phase: action === 'preview' ? 'panel_preview_plan' : 'panel_consume',
+        phase: action === 'preview' ? 'panel_preview_permissions' : 'panel_confirm_permissions',
       }),
     );
     expect(log.error).not.toHaveBeenCalled();
@@ -901,7 +899,7 @@ test.each(['preview', 'confirm'] as const)(
   },
 );
 
-test('immediate panel preview and confirmation use fresh REST inventories without Gateway requests', async () => {
+test('member panel preview and confirmation verify targeted permissions without a full member inventory', async () => {
   const channel = {
     id: 'panel',
     name: 'nexus',
@@ -942,8 +940,88 @@ test('immediate panel preview and confirmation use fresh REST inventories withou
   view = await run(click(view, 'confirm'));
   expect(JSON.stringify(view)).toContain('Action terminée');
   expect(install).toHaveBeenCalledWith(channel.id);
-  expect(list).toHaveBeenCalledTimes(2);
-  expect(list).toHaveBeenCalledWith({ limit: 1000, after: undefined, cache: false });
+  expect(list).not.toHaveBeenCalled();
+  expect(f.community.snapshot).not.toHaveBeenCalled();
   expect(fetchAll).not.toHaveBeenCalled();
   expect(log.error).not.toHaveBeenCalled();
 });
+
+test.each(['home', 'back'] as const)(
+  'admin %s navigation still works after the displayed game changed',
+  async (action) => {
+    const g = f.add(game());
+    const before = render({
+      page: 'game',
+      id: g.id,
+      back: { page: 'catalogue', filter: 'all', query: '', index: 0 },
+    });
+    f.repository.saveGame({ ...g, name: 'Updated by another admin' });
+    const result = await run(click(before, action));
+    expect(log.warn).not.toHaveBeenCalledWith(expect.objectContaining({ code: 'staleAction' }));
+    if (action === 'home') expect(actionId(result, 'requests', 'na')).toBeDefined();
+    else
+      expect(select(result).some((option) => option.label === 'Updated by another admin')).toBe(
+        true,
+      );
+  },
+);
+
+test('a stale destructive admin action still requires reviewing the updated game', async () => {
+  const g = f.add(game());
+  const before = render({ page: 'game', id: g.id, back: { page: 'home' } });
+  f.repository.saveGame({ ...g, name: 'Updated by another admin' });
+  const result = await run(click(before, 'archive'));
+  expect(JSON.stringify(result)).toContain('état a changé');
+  expect(f.community.move).not.toHaveBeenCalled();
+});
+
+test.each(['details', 'image'] as const)(
+  'admin navigation cancels a superseded candidate during %s loading',
+  async (phase) => {
+    const candidate = await f.catalogue.get(123);
+    const view = render({
+      page: 'results',
+      query: 'Game',
+      items: [candidate],
+      draft: { name: '', url: '', assetId: null, rawgId: null, back: { page: 'home' } },
+    });
+    let entered!: () => void, release!: () => void;
+    const waiting = new Promise<void>((r) => {
+      entered = r;
+    });
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    if (phase === 'details')
+      jest.mocked(f.catalogue.get).mockImplementationOnce(async () => {
+        entered();
+        await gate;
+        return candidate;
+      });
+    else
+      jest.mocked(f.catalogue.image).mockImplementationOnce(async () => {
+        entered();
+        await gate;
+        return null;
+      });
+    const save = jest.spyOn(f.repository, 'saveAsset');
+    const choose = chosen(view, 'candidate', '123');
+    const pending = controller.handle(choose as unknown as Interaction);
+    try {
+      await waiting;
+      const home = await run(click(view, 'home'));
+      release();
+      await pending;
+      if (phase === 'details') expect(f.catalogue.image).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+      expect(choose.editReply).not.toHaveBeenCalled();
+      expect(actionId(home, 'requests', 'na')).toBeDefined();
+      expect(log.debug).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'admin_diagnostic_cancelled' }),
+      );
+    } finally {
+      release();
+      await pending;
+    }
+  },
+);

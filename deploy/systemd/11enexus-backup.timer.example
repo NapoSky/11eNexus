@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up 11eNexus daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=11enexus-backup.service
+
+[Install]
+WantedBy=timers.target

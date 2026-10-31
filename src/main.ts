@@ -8,6 +8,8 @@ import { languagesReady } from './presentation/i18n.js';
 import { logger } from './infrastructure/logger.js';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { ActiveChannelOrder } from './infrastructure/active-channel-order.js';
+import { Shutdown } from './infrastructure/shutdown.js';
+import { imageWork } from './infrastructure/image-work.js';
 
 async function main(): Promise<void> {
   await languagesReady;
@@ -16,9 +18,10 @@ async function main(): Promise<void> {
   const { repository, settings, client } = app;
   if (!repository.acquireLease(owner, Date.now()))
     throw new Error('Another instance owns this database');
-  let stopping = false;
+  const backgroundReads = new AbortController();
   let lastSync = 0;
   let busy = false;
+  let lastHealthLog = 0;
   let syncing: Promise<void> = Promise.resolve();
   const channelOrder = new ActiveChannelOrder(
     client,
@@ -26,7 +29,7 @@ async function main(): Promise<void> {
     settings.activeCategoryId,
     () =>
       app.nexus.mutex.run(async () => {
-        if (!stopping && client.isReady()) await app.gateway.sortActiveGameChannels();
+        if (!shutdown.stopping && client.isReady()) await app.gateway.sortActiveGameChannels();
       }),
   );
   const loopDelay = monitorEventLoopDelay({ resolution: 20 });
@@ -37,7 +40,7 @@ async function main(): Promise<void> {
     () =>
       app.nexus.mutex.run(async () => {
         const id = app.controller.events.categories().activeId;
-        if (!stopping && client.isReady() && id)
+        if (!shutdown.stopping && client.isReady() && id)
           await app.controller.events.community.sortChannels(id);
       }),
   );
@@ -58,31 +61,55 @@ async function main(): Promise<void> {
       void stop(1);
       return;
     }
-    health(
-      !stopping &&
-        client.isReady() &&
-        lastSync > 0 &&
-        Date.now() - lastSync < Math.max(settings.intervalSeconds * 3000, 15 * 60000),
-    );
+    const ready =
+      !shutdown.stopping &&
+      client.isReady() &&
+      lastSync > 0 &&
+      Date.now() - lastSync < Math.max(settings.intervalSeconds * 3000, 15 * 60000);
+    health(ready);
+    if (Date.now() - lastHealthLog >= 60000) {
+      lastHealthLog = Date.now();
+      const memory = process.memoryUsage();
+      logger.info({
+        event: 'runtime_health',
+        ready,
+        reconciliationRunning: busy,
+        lastReconciliationAgeSeconds: lastSync ? Math.round((Date.now() - lastSync) / 1000) : null,
+        rssMiB: Math.round(memory.rss / 1048576),
+        heapMiB: Math.round(memory.heapUsed / 1048576),
+        externalMiB: Math.round(memory.external / 1048576),
+        memoryLimitMiB: process.constrainedMemory()
+          ? Math.round(process.constrainedMemory() / 1048576)
+          : null,
+        images: imageWork.stats(),
+      });
+    }
   }, 10000);
   let scheduler: ReturnType<typeof setInterval> | undefined;
-  const stop = async (code = 0) => {
-    if (stopping) return;
-    stopping = true;
-    if (scheduler) clearInterval(scheduler);
-    loopDelay.disable();
-    health(false);
-    await channelOrder.stop();
-    await eventOrder.stop();
-    await client.destroy();
-    await syncing;
-    await app.controller.drain();
-    await app.nexus.mutex.run(async () => {});
-    clearInterval(heartbeat);
-    repository.releaseLease(owner);
-    repository.close();
-    process.exit(code);
-  };
+  const shutdown = new Shutdown({
+    stopIntake: () => {
+      if (scheduler) clearInterval(scheduler);
+      loopDelay.disable();
+      app.controller.stopAccepting();
+      stopActivity();
+      backgroundReads.abort();
+      try {
+        health(false);
+      } catch (err) {
+        logger.error({ event: 'shutdown_health_failed', err });
+      }
+    },
+    drain: () => [channelOrder.stop(), eventOrder.stop(), syncing, app.controller.drain()],
+    drainMutations: () => app.nexus.mutex.run(async () => {}),
+    disconnect: () => client.destroy(),
+    closeStorage: () => {
+      clearInterval(heartbeat);
+      repository.releaseLease(owner);
+      repository.close();
+    },
+    exit: (code) => process.exit(code),
+  });
+  const stop = (code = 0) => shutdown.run(code);
   process.once('SIGINT', () => void stop());
   process.once('SIGTERM', () => void stop());
   process.once('uncaughtException', (err) => {
@@ -96,19 +123,22 @@ async function main(): Promise<void> {
   app.controller.listen();
   channelOrder.listen();
   eventOrder.listen();
-  app.gateway.onActivity((id, at) => app.nexus.recordActivity(id, at));
+  const stopActivity = app.gateway.onActivity((id, at) => app.nexus.recordActivity(id, at));
   const synchronize = async () => {
-    if (busy || stopping || !client.isReady()) return;
+    if (busy || shutdown.stopping || !client.isReady()) return;
     busy = true;
     const startedAt = performance.now();
     logger.info({ event: 'reconciliation_started' });
     try {
       await app.nexus.maintain();
-      await app.nexus.synchronize();
-      await app.controller.events.synchronize();
+      await app.nexus.synchronize(true, undefined, undefined, undefined, backgroundReads.signal);
+      if (shutdown.stopping) return;
+      await app.controller.events.synchronize(backgroundReads.signal);
+      if (shutdown.stopping) return;
       channelOrder.request();
       eventOrder.request();
-      await app.nexus.deliverNewGameAnnouncements();
+      await app.nexus.deliverNewGameAnnouncements(backgroundReads.signal);
+      if (shutdown.stopping) return;
       lastSync = Date.now();
       health(true);
       const games = repository.games();
@@ -121,6 +151,10 @@ async function main(): Promise<void> {
         unavailable: games.filter((g) => g.state === 'unavailable').length,
       });
     } catch (error) {
+      if (backgroundReads.signal.aborted && error === backgroundReads.signal.reason) {
+        logger.info({ event: 'reconciliation_cancelled' });
+        return;
+      }
       logger.error({
         event: 'reconciliation_failed',
         elapsedMs: Math.round(performance.now() - startedAt),
@@ -135,7 +169,7 @@ async function main(): Promise<void> {
   client.once(Events.ClientReady, () => {
     logger.info({ event: 'ready', bot: '11eNexus', instanceId: owner });
     const run = () => {
-      if (!busy && !stopping) syncing = synchronize();
+      if (!busy && !shutdown.stopping) syncing = synchronize();
     };
     run();
     scheduler = setInterval(run, settings.intervalSeconds * 1000);

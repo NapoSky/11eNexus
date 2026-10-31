@@ -75,13 +75,15 @@ Rechercher un titre ou un alias, puis choisir une fiche. Les filtres distinguent
 
 Le rôle Admin est exempt des quotas membres d’ajout, de relance, de demande et de recherche, y compris depuis le parcours membre. Les anciens compteurs ne désactivent pas ses boutons. La limite anti-abus de cinquante demandes ouvertes ne bloque pas les demandes administratives. Les plafonds de catalogue, de salons, de rôles et les contrôles de permissions restent applicables. L’admin qui décide et le bénéficiaire d’une demande sont distingués dans le journal. Ajouter ou relancer ne produit aucun abonnement ou ping implicite.
 
+L’assistant de réparation refuse les rôles des événements et des alertes nouveautés, ainsi que les rôles réservés du serveur : les abonnements de ces fonctions restent séparés.
+
 Un renommage Discord partiellement effectué reste journalisé et bloque le jeu pour vérification ; aucun salon n’est supprimé pour compenser une erreur.
 
 ## Maintenance
 
 L’ouverture affiche une aide. **Vérifier maintenant** lit les ressources et l’activité, sans déplacer de salon, changer de rôle, réconcilier la base ou publier d’alerte. Les sessions de navigation restent enregistrées séparément.
 
-Le clic affiche immédiatement la vérification en cours, même lorsqu’elle attend la fin d’une réconciliation. L’écran indique ensuite la lecture des ressources puis le nombre de jeux vérifiés, avec des mises à jour espacées pour limiter les appels Discord. Le bouton de vérification est désactivé pendant ce scan ; **Retour** et **Accueil admin** restent disponibles. Quitter cet écran arrête la suite du scan après l’appel réseau en cours. Une réponse ou une erreur tardive ne remplace pas le nouveau menu ; un autre menu personnel ouvert dans un message distinct reste indépendant. La fin du diagnostic et les échecs sont signalés explicitement, avec possibilité de réessayer.
+Le clic affiche immédiatement la vérification en cours. Le diagnostic peut avancer pendant une réconciliation sans retenir les actions des membres. L’écran indique ensuite la lecture des ressources puis le nombre de jeux vérifiés, avec des mises à jour espacées pour limiter les appels Discord. Le bouton de vérification est désactivé pendant ce scan ; **Retour** et **Accueil admin** restent disponibles. Quitter cet écran arrête la suite du scan après l’appel réseau en cours. Une réponse ou une erreur tardive ne remplace pas le nouveau menu ; un autre menu personnel ouvert dans un message distinct reste indépendant. La fin du diagnostic et les échecs sont signalés explicitement, avec possibilité de réessayer.
 
 Le diagnostic présente les écarts, ressources manquantes ou non suivies, noms à réaligner, jeux proposés à l’archivage et historiques incomplets. Les opérations à vérifier donnent accès à l’assistant de réparation. Un audit incomplet n’est pas présenté comme un inventaire exhaustif.
 

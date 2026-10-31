@@ -1,6 +1,6 @@
 # 11eNexus
 
-- Node 24 (minimum 24.22.1), TypeScript 7, pnpm 12.14.0. Run `pnpm check` and `pnpm format:check` after changes. Tests use Jest with SWC.
+- Node 26, TypeScript 7, pnpm 12.14.0. Run `pnpm check` and `pnpm format:check` after changes. Tests use Jest with SWC.
 - Keep the domain independent from Discord, SQLite and localization libraries. Application code depends on ports; infrastructure implements them.
 - Update both `src/locales/fr.json` and `en.json` for user-visible copy. Public panel copy is short and bilingual; subsequent interactions are ephemeral and localized.
 - Preserve channel history. Discord wins reconciliation. Never replay subscription assignments or recreate manually deleted resources without an explicit administrative operation.

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { requireNode26 } from './infrastructure/node-version.js';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { once } from 'node:events';
@@ -40,6 +41,7 @@ function output(path: string, data: unknown): void {
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
 }
 async function main(): Promise<void> {
+  requireNode26();
   const command = process.argv[2];
   if (!command || command === 'help') {
     console.info(

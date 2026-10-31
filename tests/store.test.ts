@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, chmodSync, readdirSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/infrastructure/store.js';
@@ -147,8 +148,24 @@ test('backup includes committed WAL content and passes SQLite integrity verifica
   const g = game();
   store.saveGame(g);
   store.subscribe(g.id, member.id, true);
-  const path = join(directory, 'backup.sqlite');
+  const destination = join(directory, 'snapshot');
+  mkdirSync(destination, { mode: 0o700 });
+  const path = join(destination, 'backup.sqlite');
   await store.backup(path);
+  chmodSync(destination, 0o500);
+  try {
+    const readonly = new DatabaseSync(path, { readOnly: true });
+    try {
+      expect(readonly.prepare('PRAGMA journal_mode').get()?.journal_mode).toBe('delete');
+      expect(readonly.prepare('PRAGMA integrity_check').get()?.integrity_check).toBe('ok');
+      expect(readonly.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {
+      readonly.close();
+    }
+    expect(readdirSync(destination)).toEqual(['backup.sqlite']);
+  } finally {
+    chmodSync(destination, 0o700);
+  }
   const backup = new Store(path);
   try {
     expect(backup.game(g.id)).toEqual(g);

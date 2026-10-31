@@ -51,3 +51,15 @@ test('streaming limits cannot be bypassed by omitting Content-Length', async () 
     discordAttachment('https://cdn.discordapp.com/attachments/1/2/icon.png'),
   ).rejects.toMatchObject({ code: 'invalidImage' });
 });
+
+test('a rejected image response cancels its unread body instead of keeping the download open', async () => {
+  const cancel = jest.fn();
+  const stream = new ReadableStream<Uint8Array>({ cancel });
+  jest
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValue(new Response(stream, { headers: { 'content-length': '5000001' } }));
+  await expect(
+    discordAttachment('https://cdn.discordapp.com/attachments/1/2/large.png'),
+  ).rejects.toMatchObject({ code: 'invalidImage' });
+  expect(cancel).toHaveBeenCalledTimes(1);
+});

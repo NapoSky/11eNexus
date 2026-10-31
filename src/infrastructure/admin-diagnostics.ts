@@ -1,4 +1,5 @@
 const hints: Record<string, string> = {
+  UnsupportedNodeVersion: 'Use Node.js 26 for development, tests and the runtime image.',
   EACCES: 'Check ownership and permissions: the container runs as UID 1000.',
   EPERM: 'Check ownership and permissions: the container runs as UID 1000.',
   ENOENT: 'Check the mounted manifest path and the database directory.',

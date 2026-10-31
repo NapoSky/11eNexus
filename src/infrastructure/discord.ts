@@ -5,6 +5,7 @@ import {
   ContainerBuilder,
   TextDisplayBuilder,
   MessageFlags,
+  Options,
   escapeMarkdown,
   ChannelType,
   Client,
@@ -20,7 +21,14 @@ import {
   type OverwriteResolvable,
   type Message,
 } from 'discord.js';
-import { DomainError, channelName, type Actor, type Asset, type Game } from '../domain/model.js';
+import {
+  DomainError,
+  channelName,
+  requireMember,
+  type Actor,
+  type Asset,
+  type Game,
+} from '../domain/model.js';
 import type { Activity, Community, World, Repository } from '../application/ports.js';
 import type { Config } from './config.js';
 import { translator } from '../presentation/i18n.js';
@@ -31,6 +39,8 @@ import { activeChannelPositions } from './active-channel-order.js';
 
 export function discordClient(): Client {
   return new Client({
+    makeCache: Options.cacheWithLimits({ ...Options.DefaultMakeCacheSettings, MessageManager: 0 }),
+    sweepers: { ...Options.DefaultSweeperSettings, threads: { interval: 300, lifetime: 900 } },
     intents: [
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMembers,
@@ -74,6 +84,9 @@ export class DiscordCommunity implements Community {
     const guild = await this.guild();
     const member = await guild.members.fetch({ user: id, force: true });
     return this.memberActor(member);
+  }
+  async authorize(actor: Actor): Promise<Actor> {
+    return this.actor(actor.id);
   }
   memberActor(member: GuildMember): Actor {
     return {
@@ -265,7 +278,12 @@ export class DiscordCommunity implements Community {
     });
     return role.id;
   }
-  async move(game: Game, archive: boolean, operationId: string): Promise<void> {
+  async move(
+    game: Game,
+    archive: boolean,
+    operationId: string,
+    stillCurrent?: () => boolean,
+  ): Promise<void> {
     if (!game.channelId) throw new DomainError('notFound');
     const channel = await this.parent(game.channelId);
     if (
@@ -279,21 +297,46 @@ export class DiscordCommunity implements Community {
       : channel.parentId === this.config.activeCategoryId;
     const destination =
       alreadyThere && channel.parentId ? channel.parentId : await this.destination(archive);
+    const originalParent = channel.parentId;
     const old = channel.permissionOverwrites.cache.map((o) => ({
       id: o.id,
       type: o.type,
       allow: o.allow.bitfield.toString(),
       deny: o.deny.bitfield.toString(),
     }));
+    if (stillCurrent && (originalParent !== this.config.activeCategoryId || !stillCurrent()))
+      throw new DomainError('activityChanged');
     this.repository.set(`permissionsBefore:${operationId}`, old);
+    let moved = false;
+    const cancelArchive = async () => {
+      if (!stillCurrent || stillCurrent()) return;
+      // Human activity may arrive while the ACL/move HTTP call is already in
+      // flight. Restore only this bot's interrupted automatic archive, retaining
+      // the exact original overwrites and without replaying role assignments.
+      if (moved && originalParent)
+        await channel.setParent(originalParent, {
+          lockPermissions: false,
+          reason: `11eNexus op:${operationId} activity`,
+        });
+      await channel.permissionOverwrites.set(
+        old.map((o) => ({ ...o, allow: BigInt(o.allow), deny: BigInt(o.deny) })),
+        `11eNexus op:${operationId} activity`,
+      );
+      throw new DomainError('activityChanged');
+    };
     // Apply the restrictive ACL before moving to archives. A failed move is reconciled, never reported as success.
-    if (archive)
+    if (archive) {
       await channel.permissionOverwrites.set(this.overwrites(true), `11eNexus op:${operationId}`);
-    if (channel.parentId !== destination)
+      await cancelArchive();
+    }
+    if (channel.parentId !== destination) {
       await channel.setParent(destination, {
         lockPermissions: false,
         reason: `11eNexus op:${operationId}`,
       });
+      moved = true;
+    }
+    if (archive) await cancelArchive();
     if (!archive)
       await channel.permissionOverwrites.set(this.overwrites(false), `11eNexus op:${operationId}`);
   }
@@ -369,9 +412,16 @@ export class DiscordCommunity implements Community {
       }
     }
   }
-  async setSubscription(roleId: string, memberId: string, enabled: boolean): Promise<void> {
+  async setSubscription(
+    roleId: string,
+    memberId: string,
+    enabled: boolean,
+    selfService = false,
+  ): Promise<void> {
     if (roleId === this.config.newGameRoleId) await this.newGameRole(true);
     const member = await (await this.guild()).members.fetch({ user: memberId, force: true });
+    if (selfService) requireMember(this.memberActor(member));
+    if (member.roles.cache.has(roleId) === enabled) return;
     if (enabled) await member.roles.add(roleId, '11eNexus: subscription');
     else await member.roles.remove(roleId, '11eNexus: subscription');
   }
@@ -490,7 +540,7 @@ export class DiscordCommunity implements Community {
     let before: string | undefined;
     for (let page = 0; page < 20; page++) {
       signal?.throwIfAborted();
-      const messages = await channel.messages.fetch({ limit: 100, before });
+      const messages = await channel.messages.fetch({ limit: 100, before, cache: false });
       signal?.throwIfAborted();
       if (messages.size === 0) return { at: null, complete: true };
       const ordered = [...messages.values()].sort(
@@ -568,8 +618,8 @@ export class DiscordCommunity implements Community {
       complete: observations.every((o) => o.complete),
     };
   }
-  onActivity(handler: (id: string, at: number) => Promise<void>): void {
-    this.client.on(Events.MessageCreate, (message: Message) => {
+  onActivity(handler: (id: string, at: number) => Promise<void>): () => void {
+    const receive = (message: Message) => {
       if (
         message.guildId !== this.config.guildId ||
         message.author.bot ||
@@ -582,7 +632,9 @@ export class DiscordCommunity implements Community {
         handler(id, message.createdTimestamp).catch((err) =>
           logger.error({ event: 'activity_record_failed', err }),
         );
-    });
+    };
+    this.client.on(Events.MessageCreate, receive);
+    return () => this.client.off(Events.MessageCreate, receive);
   }
   async panelChannel(requested?: string): Promise<TextChannel> {
     const guild = await this.guild();

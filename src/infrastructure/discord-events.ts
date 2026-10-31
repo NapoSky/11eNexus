@@ -465,6 +465,6 @@ export class DiscordEvents implements EventCommunity {
     return this.gateway.subscription(roleId, userId);
   }
   subscribe(roleId: string, userId: string, enabled: boolean): Promise<void> {
-    return this.gateway.setSubscription(roleId, userId, enabled);
+    return this.gateway.setSubscription(roleId, userId, enabled, true);
   }
 }

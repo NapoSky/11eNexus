@@ -29,7 +29,7 @@
   "gameHelp_unavailable": "Ce jeu demande une vérification de l’équipe avant de pouvoir être relancé.",
   "gameNeedsHelp": "Une vérification administrative est nécessaire. Tu peux revenir au catalogue et choisir un autre jeu.",
   "subscriptionHelp": "L’abonnement sert à recevoir les mentions du jeu ; il ne change pas l’accès au salon.",
-  "quotaPending": "Une de tes actions doit encore être vérifiée par l’équipe avant un nouvel ajout ou une relance.",
+  "quotaPending": "Une action est en cours ou reste à vérifier. Réessaie plus tard ou contacte l’équipe.",
   "candidateConfirmHelp": "C’est bien ce jeu ? Vérifie le studio et l’édition avant de confirmer.",
   "studio": "Studio",
   "releaseDate": "Sortie",
@@ -374,7 +374,7 @@
   "requestHelp_expired": "Cette demande a expiré après 30 jours sans évolution. Tu peux envoyer une nouvelle demande si le jeu t’intéresse toujours.",
   "a.historyRetention": "Demandes sans évolution : expiration après 30 jours. Historique clôturé : conservation 30 jours.",
   "a.diagnosticRunning": "🔎 Vérification en cours",
-  "a.diagnostic_waiting": "Préparation et attente de la fin des opérations en cours…",
+  "a.diagnostic_waiting": "Préparation de la vérification.",
   "a.diagnostic_resources": "Lecture des salons, rôles et membres…",
   "a.diagnostic_activity": "Activité : {{current}} / {{total}} jeux vérifiés.",
   "a.diagnosticLeave": "Tu peux revenir au menu. Quitter cet écran arrête cette vérification ; son résultat ne remplacera pas le menu ouvert.",
@@ -465,5 +465,9 @@
   "e.closeOnly": "Fermer sans supprimer",
   "e.closeOnlyPreview": "Les archives sont pleines. Cette confirmation ferme l’événement et supprime uniquement son rôle de notification. Son salon et son historique restent conservés et masqués à leur emplacement ; leur rangement attend une place libre. Aucun ancien salon ne sera supprimé.",
   "e.closedPending": "L’événement est fermé et masqué. Son rangement reste à terminer.",
-  "resourceAuditAssociations": "Jeux / événements"
+  "resourceAuditAssociations": "Jeux / événements",
+  "workingTitle": "Action en cours",
+  "workingHelp": "Ta demande est en cours de traitement. Tu peux continuer à parcourir les menus ; une action déjà confirmée sera terminée.",
+  "repairReservedResource": "Ce salon ou ce rôle appartient à un événement ou à une autre fonction du serveur. Choisis une ressource dédiée au jeu.",
+  "imageBusy": "Plusieurs images sont déjà en cours de traitement. Réessaie dans quelques instants."
 }

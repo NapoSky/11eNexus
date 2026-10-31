@@ -29,7 +29,7 @@
   "gameHelp_unavailable": "The team needs to check this game before it can be brought back.",
   "gameNeedsHelp": "An administrator needs to check this game. You can return to the catalogue and choose another one.",
   "subscriptionHelp": "Subscribing gives you game mentions; it does not change channel access.",
-  "quotaPending": "The team needs to check one of your previous actions before another addition or revival.",
+  "quotaPending": "An action is still running or awaiting review. Try again later or contact the team.",
   "candidateConfirmHelp": "Is this the right game? Check the studio and edition before confirming.",
   "studio": "Studio",
   "releaseDate": "Released",
@@ -374,7 +374,7 @@
   "requestHelp_expired": "This request expired after 30 days without an update. You can submit a new request if you are still interested.",
   "a.historyRetention": "Inactive requests expire after 30 days. Closed history is kept for 30 days.",
   "a.diagnosticRunning": "🔎 Check in progress",
-  "a.diagnostic_waiting": "Preparing and waiting for current operations to finish…",
+  "a.diagnostic_waiting": "Preparing the check.",
   "a.diagnostic_resources": "Reading channels, roles and members…",
   "a.diagnostic_activity": "Activity: {{current}} / {{total}} games checked.",
   "a.diagnosticLeave": "You can return to the menu. Leaving this screen stops this check; its result will not replace the menu you opened.",
@@ -465,5 +465,9 @@
   "e.closeOnly": "Close without deleting",
   "e.closeOnlyPreview": "The archives are full. This confirmation closes the event and deletes only its notification role. Its channel and history remain hidden in place, awaiting space in the archives. No older channel will be deleted.",
   "e.closedPending": "The event is closed and hidden. Archiving still needs finishing.",
-  "resourceAuditAssociations": "Games / events"
+  "resourceAuditAssociations": "Games / events",
+  "workingTitle": "Working on your request",
+  "workingHelp": "Your request is being processed. You can keep browsing the menus; an action already confirmed will still finish.",
+  "repairReservedResource": "This channel or role belongs to an event or another server feature. Choose a resource dedicated to this game.",
+  "imageBusy": "Several images are already being processed. Please try again shortly."
 }

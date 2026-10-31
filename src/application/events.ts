@@ -33,7 +33,10 @@ export interface EventPlan {
   announcementTags: { id: string; name: string }[];
   archiveBlocked: boolean;
 }
-const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const hash = (value: unknown) =>
+  createHash('sha256')
+    .update(JSON.stringify(value) ?? 'undefined')
+    .digest('hex');
 export class EventService {
   constructor(
     readonly repository: Repository,
@@ -622,58 +625,105 @@ export class EventService {
       return this.community.subscribed(event.roleId, actor.id);
     });
   }
-  async synchronize(): Promise<void> {
-    if (!this.repository.events().some((e) => e.state !== 'deleted')) return;
+  async synchronize(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    const observed = await this.mutex.run(async () => ({
+      events: this.repository.events(),
+      operations: this.repository.eventOperations(),
+      categories: this.categories(),
+    }));
+    if (!observed.events.some((e) => e.state !== 'deleted')) return;
+    const issueFor = (event: CommunityEvent, world: EventWorld): string | null => {
+      const channel = world.channels.find((c) => c.id === event.channelId);
+      const categories = observed.categories;
+      if (!channel || ![categories.activeId, categories.archiveId].includes(channel.parentId))
+        return 'e.channelMissing';
+      if (event.state === 'active' && channel.parentId !== categories.activeId)
+        return 'e.channelMissing';
+      if (event.state === 'closed' && channel.hidden === false) return 'needsReview';
+      if (
+        event.state === 'active' &&
+        (!world.roles.some((r) => r.id === event.roleId) || channel.hidden)
+      )
+        return 'e.roleMissing';
+      if (
+        event.state === 'archived' &&
+        (channel.parentId !== categories.archiveId || channel.hidden === false)
+      )
+        return 'needsReview';
+      return event.state === 'creating' ? 'e.partial' : null;
+    };
+    signal?.throwIfAborted();
+    let world = await this.world();
+    signal?.throwIfAborted();
+    const messages = new Map<string, string>();
+    // Slow message reads never own the mutation mutex used by personal panels.
+    for (const event of observed.events) {
+      signal?.throwIfAborted();
+      if (event.state === 'active' && !issueFor(event, world)) {
+        messages.set(event.id, await this.community.messageStatus(event));
+        signal?.throwIfAborted();
+      }
+    }
+    // Manual moves/deletions during message reads win over the earlier inventory.
+    if (messages.size) world = await this.world();
+    signal?.throwIfAborted();
     await this.mutex.run(async () => {
-      const world = await this.world();
-      const categories = this.categories();
-      for (const op of this.repository.eventOperations())
-        if (
-          op.status !== 'completed' &&
-          op.cleanupId &&
-          !op.cleaned &&
-          op.attempted.includes('cleanup')
-        ) {
+      signal?.throwIfAborted();
+      if (hash(this.categories()) !== hash(observed.categories)) return;
+      const currentOperations = new Map(this.repository.eventOperations().map((op) => [op.id, op]));
+      this.repository.transaction(() => {
+        for (const op of observed.operations) {
+          if (
+            op.status === 'completed' ||
+            !op.cleanupId ||
+            op.cleaned ||
+            !op.attempted.includes('cleanup')
+          )
+            continue;
           const target = this.repository.event(op.cleanupId);
-          if (target?.channelId && !world.channels.some((c) => c.id === target.channelId)) {
+          const before = observed.events.find((e) => e.id === op.cleanupId);
+          if (
+            hash(currentOperations.get(op.id)) !== hash(op) ||
+            !target ||
+            !before ||
+            hash(target) !== hash(before)
+          )
+            continue;
+          if (target.channelId && !world.channels.some((c) => c.id === target.channelId)) {
             target.state = 'deleted';
             this.save(target);
             op.cleaned = true;
             this.repository.saveEventOperation(op);
           }
         }
-      for (const event of this.repository.events().filter((e) => e.state !== 'deleted')) {
-        const channel = world.channels.find((c) => c.id === event.channelId);
-        let issue: string | null = null;
-        if (!channel || ![categories.activeId, categories.archiveId].includes(channel.parentId))
-          issue = 'e.channelMissing';
-        else if (event.state === 'active' && channel.parentId !== categories.activeId)
-          issue = 'e.channelMissing';
-        else if (event.state === 'closed' && channel.hidden === false) issue = 'needsReview';
-        else if (
-          event.state === 'active' &&
-          (!world.roles.some((r) => r.id === event.roleId) || channel.hidden)
-        )
-          issue = 'e.roleMissing';
-        else if (
-          event.state === 'archived' &&
-          (channel.parentId !== categories.archiveId || channel.hidden === false)
-        )
-          issue = 'needsReview';
-        else if (event.state === 'creating') issue = 'e.partial';
-        if (
-          !issue &&
-          event.state === 'active' &&
-          (await this.community.messageStatus(event)) !== 'present'
-        ) {
-          issue = 'e.messageMissing';
-          event.pinned = false;
+        for (const before of observed.events) {
+          const event = this.repository.event(before.id);
+          // A close, repair or edit completed during the scan: discard its old observation.
+          if (!event || event.state === 'deleted' || hash(event) !== hash(before)) continue;
+          // A successful repair can leave the same IDs/fields (for example repinning).
+          // Its operation receipt still invalidates the earlier network observation.
+          if (
+            hash(observed.operations.filter((op) => op.eventId === event.id)) !==
+            hash([...currentOperations.values()].filter((op) => op.eventId === event.id))
+          )
+            continue;
+          let issue = issueFor(event, world);
+          if (
+            !issue &&
+            event.state === 'active' &&
+            messages.has(event.id) &&
+            messages.get(event.id) !== 'present'
+          ) {
+            issue = 'e.messageMissing';
+            event.pinned = false;
+          }
+          if (issue && event.issue !== issue) {
+            event.issue = issue;
+            this.save(event);
+          }
         }
-        if (issue && event.issue !== issue) {
-          event.issue = issue;
-          this.save(event);
-        }
-      }
+      });
     });
   }
 }

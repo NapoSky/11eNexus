@@ -196,7 +196,7 @@ test('a public pinned button opens localized ephemeral controls and never edits 
     publicView = eventMessage(event);
   const i = { ...button(actionId(publicView, 'subscribe', 'ne'), member, false), locale: 'en-US' };
   const view = await run(i);
-  expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+  expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral, withResponse: true });
   expect(i.deferUpdate).not.toHaveBeenCalled();
   expect(JSON.stringify(view)).toContain(translator('en')('e.notificationsOff'));
   const enable = { ...button(actionId(view, 'enable', 'ne'), member), locale: 'en-US' };
@@ -346,4 +346,34 @@ test('an admin can close without approving a destructive cleanup, leaving the ch
   expect(f.repository.event(event.id)?.state).toBe('closed');
   expect(f.eventCommunity.world.channels.find((c) => c.id === event.channelId)?.hidden).toBe(true);
   expect(f.eventCommunity.deleteChannel).not.toHaveBeenCalled();
+});
+
+test.each(['fr', 'en'] as const)(
+  '%s event notification settings return to the member home in the same private message',
+  async (language) => {
+    const event = await f.create();
+    const settings = controller.eventController.views.notifications(member, language, event, false);
+    const homeId = actionId(settings, 'home', 'nx');
+    expect(controls(settings).find((c) => c.custom_id === homeId)?.label).toBe(
+      translator(language)('home'),
+    );
+    const i = { ...button(homeId, member), locale: language };
+    const home = await run(i);
+    expect(i.deferUpdate).toHaveBeenCalledTimes(1);
+    expect(i.deferReply).not.toHaveBeenCalled();
+    expect(JSON.stringify(home)).toContain('11eNexus');
+    expect(actionId(home, 'games', 'nx')).toBeDefined();
+    expect(home.allowedMentions).toEqual({ parse: [] });
+    expect(f.eventCommunity.subscribe).not.toHaveBeenCalled();
+  },
+);
+
+test('the event notification home shortcut stays bound to its owner', async () => {
+  const event = await f.create();
+  const settings = controller.eventController.views.notifications(member, 'fr', event, false);
+  const foreign = button(actionId(settings, 'home', 'nx'), admin);
+  await controller.handle(foreign as unknown as Interaction);
+  expect(foreign.deferUpdate).not.toHaveBeenCalled();
+  expect(foreign.reply).toHaveBeenCalled();
+  expect(f.eventCommunity.subscribe).not.toHaveBeenCalled();
 });

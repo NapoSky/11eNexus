@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import {
   DAY,
+  blocksMemberCreation,
   DomainError,
   normalize,
   type Actor,
@@ -142,11 +143,7 @@ export class Views {
   private quota(actor: Actor, language: Locale): { blocked: boolean; hint: string } {
     const t = translator(language);
     if (actor.admin) return { blocked: false, hint: t('a.adminQuota') };
-    if (
-      this.repository
-        .operations()
-        .some((op) => op.actorId === actor.id && ['pending', 'review'].includes(op.status))
-    )
+    if (this.repository.operations().some((op) => blocksMemberCreation(op, actor.id, Date.now())))
       return { blocked: true, hint: t('quotaPending') };
     const at = this.repository.cooldown(actor.id);
     const remaining = at === null ? 0 : at + DAY - Date.now();
@@ -279,6 +276,7 @@ export class Views {
   browse(actor: Actor, language: Locale, mode: Mode = 'active', page = 0, query = ''): View {
     const t = translator(language);
     const catalogue = this.repository.games();
+    const compareNames = new Intl.Collator(language).compare;
     const games = catalogue
       .filter((g) =>
         mode === 'recent'
@@ -295,12 +293,16 @@ export class Views {
       .sort(
         (a, b) =>
           (mode === 'recent' ? (b.addedAt ?? 0) - (a.addedAt ?? 0) : 0) ||
-          a.name.localeCompare(b.name, language) ||
+          compareNames(a.name, b.name) ||
           a.id.localeCompare(b.id),
       );
     const maximum = Math.max(0, Math.ceil(games.length / 20) - 1);
     page = Math.max(0, Math.min(page, maximum));
     const slice = games.slice(page * 20, page * 20 + 20);
+    const dateFormatter =
+      mode === 'recent' && slice.length
+        ? new Intl.DateTimeFormat(language, { dateStyle: 'short', timeZone: 'Europe/Paris' })
+        : undefined;
     const s = session(this.repository, actor.id, 'browse', {
       mode,
       page,
@@ -387,7 +389,7 @@ export class Views {
                 label: g.name.slice(0, 100),
                 value: g.id,
                 description:
-                  `${t(g.state)}${mode === 'recent' ? ` · ${t('addedOn', { date: new Intl.DateTimeFormat(language, { dateStyle: 'short', timeZone: 'Europe/Paris' }).format(g.addedAt!) })}` : ''}${this.repository.subscribed(g.id, actor.id) ? ` · ${t('notificationsOnShort')}` : ''}`.slice(
+                  `${t(g.state)}${mode === 'recent' ? ` · ${t('addedOn', { date: dateFormatter!.format(g.addedAt!) })}` : ''}${this.repository.subscribed(g.id, actor.id) ? ` · ${t('notificationsOnShort')}` : ''}`.slice(
                     0,
                     100,
                   ),
@@ -550,6 +552,7 @@ export class Views {
       asset = assetId ? this.repository.asset(assetId) : null;
     const s = session(this.repository, actor.id, 'candidate', {
       rawgId: candidate.id,
+      candidate,
       assetId,
       query,
       name: candidate.name,
@@ -674,6 +677,21 @@ export class Views {
     c.addActionRowComponents(row(...controls))
       .addSeparatorComponents(separator())
       .addActionRowComponents(this.navigation(language, s.id));
+    return view(c);
+  }
+  waiting(language: Locale, source?: Session): View {
+    const t = translator(language);
+    const c = heading(
+      new ContainerBuilder().setAccentColor(0x557c5b),
+      t('workingTitle'),
+      t('workingHelp'),
+    );
+    if (source) {
+      const s = session(this.repository, source.userId, 'feedback', {
+        returnTo: destination(source),
+      });
+      c.addActionRowComponents(this.navigation(language, s.id));
+    }
     return view(c);
   }
   feedback(

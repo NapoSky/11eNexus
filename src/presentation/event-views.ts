@@ -66,6 +66,10 @@ export class EventViews {
               .setCustomId(`ne:${enabled ? 'disable' : 'enable'}:${s.id}`)
               .setStyle(enabled ? ButtonStyle.Danger : ButtonStyle.Success)
               .setLabel(t(enabled ? 'unsubscribe' : 'subscribe')),
+            new ButtonBuilder()
+              .setCustomId(`nx:home:${s.id}`)
+              .setStyle(ButtonStyle.Secondary)
+              .setLabel(t('home')),
           ),
         ),
     );

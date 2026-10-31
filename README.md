@@ -2,7 +2,7 @@
 
 Bot Discord communautaire FR/EN : des salons de jeux visibles selon leur activité, des notifications facultatives et des archives cachées conservant l’historique.
 
-Node 24 / Docker Node 26 · TypeScript 7 · discord.js · i18next · SQLite intégré à Node · Jest/SWC. Hébergement personnel avec Docker Compose, déploiement manuel. Aucun service payant requis. [English quick start](docs/quickstart.en.md).
+Node 26 · TypeScript 7 · discord.js · i18next · SQLite intégré à Node · Jest/SWC. Hébergement personnel avec Docker Compose, déploiement manuel. Aucun service payant requis. [English quick start](docs/quickstart.en.md).
 
 ## Fonctionnement
 
@@ -55,7 +55,7 @@ Sans `--apply`, `role-mentions` affiche uniquement les changements prévus. Tous
 
 ## Installation
 
-1. Utiliser Node **24.22.1 minimum sur la branche 24**, ou **Node 26**, avec pnpm **12.14.0** ; Docker Compose v2 est également disponible. La CI utilise Node 24 ; le Dockerfile suit `node:26-bookworm-slim`, avec récupération de la base récente au build.
+1. Utiliser **Node 26**, avec pnpm **12.14.0** ; Docker Compose v2 est également disponible. La CI et les tests Docker utilisent Node 26 ; le Dockerfile suit `node:26-bookworm-slim`, avec récupération de la base récente au build.
 2. Copier `.env.example` vers `.env`, renseigner `BOT_TOKEN`, `GUILD_ID`, `RAWG_API_KEY`, vérifier les rôles et catégories, puis protéger le fichier (`chmod 600 .env`). Un `.env` local déjà présent doit être conservé.
 3. Dans le Developer Portal Discord, activer **Server Members Intent**. `Message Content Intent` n’est pas utilisé. Installer l’application avec les scopes `bot` et `applications.commands`.
 4. Placer le rôle du bot **au-dessus des rôles de jeux à importer**. Permissions : gérer salons et rôles, voir les salons, lire l’historique, envoyer des messages, joindre fichiers, intégrer liens, gérer les fils pour inspecter les fils privés et mentionner les rôles. La modification du questionnaire nécessite aussi gérer le serveur et gérer les rôles. Le bot doit voir les archives et le salon admin.
@@ -137,6 +137,8 @@ La réconciliation compare les abonnés et applique uniquement les différences 
 Un menu personnel expire après quinze minutes ; le bouton « Accueil » permet alors de repartir. Cette expiration est distincte de celle du jeton Discord : une interaction doit être acquittée sous trois secondes. Un échec d’acquittement n’est jamais suivi d’un deuxième callback. Les erreurs inattendues indiquent le code Discord, l’étape, l’âge de l’interaction et les emplacements du code utiles, sans journaliser le jeton. [Délais Discord](https://docs.discord.com/developers/interactions/receiving-and-responding#interaction-callback).
 
 Après une mise à jour ajoutant des boutons au panneau, arrêter le bot, exécuter `docker compose run --rm bot node dist/cli.js setup`, puis le redémarrer. Le message du panneau existant est mis à jour, sans créer un second panneau dans le même salon. `doctor` expose les comptes du catalogue sous `catalogue.active`, `catalogue.archived` et `catalogue.unavailable` ; les salons historiques hors catalogue peuvent faire varier le nombre de salons physiques des archives.
+
+Les limites de cache et d’images, l’arrêt gracieux, les mesures de durée et les outils hôte de santé/sauvegarde sont décrits dans le [guide d’exploitation](docs/operations.md). Les exemples systemd sont à adapter avant installation.
 
 ### Sauvegarde et restauration
 

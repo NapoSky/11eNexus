@@ -360,6 +360,108 @@ test('archive permissions are restricted before the parent changes', async () =>
     expect.any(String),
   );
 });
+test('an activity change while resolving the archive destination cancels before any permission write', async () => {
+  Object.defineProperty(client, 'user', { value: { id: 'bot' } });
+  f.repository.set('archiveCategories', [archiveId]);
+  const set = jest.fn(),
+    setParent = jest.fn();
+  const channel = {
+    type: ChannelType.GuildText,
+    permissionOverwrites: { cache: new Collection(), set },
+    setParent,
+  };
+  const categories = new Collection([
+    [archiveId, { id: archiveId, type: ChannelType.GuildCategory, parentId: null }],
+  ]);
+  jest.spyOn(gateway, 'guild').mockResolvedValue({
+    channels: { fetch: async (id?: string) => (id ? channel : categories) },
+  } as unknown as Guild);
+  await expect(gateway.move(game(), true, 'archive', () => false)).rejects.toMatchObject({
+    code: 'activityChanged',
+  });
+  expect(set).not.toHaveBeenCalled();
+  expect(setParent).not.toHaveBeenCalled();
+  expect(f.repository.get('permissionsBefore:archive')).toBeUndefined();
+});
+
+test('the final member read refuses a role assignment after membership was revoked', async () => {
+  const add = jest.fn(),
+    remove = jest.fn();
+  const fetch = jest.fn(async () => ({
+    id: member.id,
+    roles: { cache: new Collection(), add, remove },
+    guild: { ownerId: 'another-owner' },
+  }));
+  jest.spyOn(gateway, 'guild').mockResolvedValue({ members: { fetch } } as unknown as Guild);
+  await expect(gateway.setSubscription('game-role', member.id, true, true)).rejects.toMatchObject({
+    code: 'forbidden',
+  });
+  expect(fetch).toHaveBeenCalledWith({ user: member.id, force: true });
+  expect(add).not.toHaveBeenCalled();
+  expect(remove).not.toHaveBeenCalled();
+});
+
+test('explicit recycled-role restoration retains preferences for a still-present former Syndiqué', async () => {
+  const add = jest.fn(),
+    remove = jest.fn();
+  const fetch = jest.fn(async () => ({
+    id: member.id,
+    roles: { cache: new Collection(), add, remove },
+  }));
+  jest.spyOn(gateway, 'guild').mockResolvedValue({ members: { fetch } } as unknown as Guild);
+  await gateway.setSubscription('restored-game-role', member.id, true);
+  expect(add).toHaveBeenCalledWith('restored-game-role', expect.any(String));
+  expect(remove).not.toHaveBeenCalled();
+});
+
+test.each(['permissions', 'parent'] as const)(
+  'activity received during the archive %s call restores the original channel',
+  async (step) => {
+    Object.defineProperty(client, 'user', { value: { id: 'bot' } });
+    f.repository.set('archiveCategories', [archiveId]);
+    let allowed = true;
+    const originalParent = gateway.config.activeCategoryId;
+    const overwrite = {
+      id: gateway.config.memberRoleId,
+      type: 0,
+      allow: { bitfield: P.ViewChannel },
+      deny: { bitfield: 0n },
+    };
+    const set = jest.fn(async () => {
+      if (step === 'permissions') allowed = false;
+    });
+    // Deliberately keep the original object unchanged: Discord.js may return a
+    // different channel object after setParent, and cancellation must still work.
+    const setParent = jest.fn(async () => {
+      if (step === 'parent') allowed = false;
+    });
+    const channel = {
+      parentId: originalParent,
+      type: ChannelType.GuildText,
+      permissionOverwrites: { cache: new Collection([[overwrite.id, overwrite]]), set },
+      setParent,
+    };
+    const categories = new Collection([
+      [archiveId, { id: archiveId, type: ChannelType.GuildCategory, parentId: null }],
+    ]);
+    jest.spyOn(gateway, 'guild').mockResolvedValue({
+      channels: { fetch: async (id?: string) => (id ? channel : categories) },
+    } as unknown as Guild);
+    await expect(gateway.move(game(), true, 'archive', () => allowed)).rejects.toMatchObject({
+      code: 'activityChanged',
+    });
+    expect(set).toHaveBeenLastCalledWith(
+      [{ id: overwrite.id, type: 0, allow: P.ViewChannel, deny: 0n }],
+      expect.any(String),
+    );
+    expect(setParent).toHaveBeenCalledTimes(step === 'parent' ? 2 : 0);
+    if (step === 'parent')
+      expect(setParent).toHaveBeenLastCalledWith(
+        originalParent,
+        expect.objectContaining({ lockPermissions: false }),
+      );
+  },
+);
 test('three full archive categories stop before modifying any channel permission', async () => {
   const ids = ['a', 'b', 'c'];
   f.repository.set('archiveCategories', ids);
@@ -801,4 +903,68 @@ test('navigation cancellation prevents fetching another REST member page', async
   await expect(gateway.snapshot(abort.signal)).rejects.toBe(reason);
   expect(list).toHaveBeenCalledTimes(1);
   expect(guild.members.fetchMe).not.toHaveBeenCalled();
+});
+
+test.each([
+  [true, true, 0, 0],
+  [false, false, 0, 0],
+  [false, true, 1, 0],
+  [true, false, 0, 1],
+])(
+  'subscription writes only when the fresh role state changes (%s -> %s)',
+  async (present, enabled, adds, removes) => {
+    const add = jest.fn(async () => {}),
+      remove = jest.fn(async () => {});
+    const roles = new Collection<string, unknown>([[gateway.config.memberRoleId, {}]]);
+    if (present) roles.set('game-role', {});
+    const fetch = jest.fn(async () => ({
+      id: member.id,
+      roles: { cache: roles, add, remove },
+      guild: { ownerId: 'another-owner' },
+    }));
+    jest.spyOn(gateway, 'guild').mockResolvedValue({ members: { fetch } } as unknown as Guild);
+    await gateway.setSubscription('game-role', member.id, enabled, true);
+    expect(fetch).toHaveBeenCalledWith({ user: member.id, force: true });
+    expect(add).toHaveBeenCalledTimes(adds);
+    expect(remove).toHaveBeenCalledTimes(removes);
+  },
+);
+
+test('repeated enable/disable clicks keep fresh permission checks while avoiding duplicate Discord writes', async () => {
+  const roles = new Collection<string, unknown>([[gateway.config.memberRoleId, {}]]);
+  const add = jest.fn(async (id: string) => {
+    roles.set(id, {});
+  });
+  const remove = jest.fn(async (id: string) => {
+    roles.delete(id);
+  });
+  const fetch = jest.fn(async () => ({
+    id: member.id,
+    roles: { cache: roles, add, remove },
+    guild: { ownerId: 'another-owner' },
+  }));
+  jest.spyOn(gateway, 'guild').mockResolvedValue({ members: { fetch } } as unknown as Guild);
+  await gateway.setSubscription('game-role', member.id, true, true);
+  await gateway.setSubscription('game-role', member.id, true, true);
+  await gateway.setSubscription('game-role', member.id, false, true);
+  await gateway.setSubscription('game-role', member.id, false, true);
+  expect(fetch).toHaveBeenCalledTimes(4);
+  expect(add).toHaveBeenCalledTimes(1);
+  expect(remove).toHaveBeenCalledTimes(1);
+});
+
+test('an already matching role state never bypasses revoked membership', async () => {
+  const add = jest.fn(),
+    remove = jest.fn();
+  const fetch = jest.fn(async () => ({
+    id: member.id,
+    roles: { cache: new Collection([['game-role', {}]]), add, remove },
+    guild: { ownerId: 'another-owner' },
+  }));
+  jest.spyOn(gateway, 'guild').mockResolvedValue({ members: { fetch } } as unknown as Guild);
+  await expect(gateway.setSubscription('game-role', member.id, true, true)).rejects.toMatchObject({
+    code: 'forbidden',
+  });
+  expect(add).not.toHaveBeenCalled();
+  expect(remove).not.toHaveBeenCalled();
 });

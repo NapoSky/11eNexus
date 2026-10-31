@@ -169,3 +169,76 @@ test('expired request labels do not reuse the personal-session expiry error', ()
   expect(JSON.stringify(personal)).toContain('30 jours');
   expect(JSON.stringify(personal)).not.toContain('panneau personnel a expiré');
 });
+
+test('permission snapshots expire atomically with completed/failed operations, including channel-suffixed copies', async () => {
+  const g = f.add(game()),
+    start = f.clock.now();
+  for (const status of ['completed', 'failed', 'pending', 'review'] as const) {
+    f.repository.saveOperation(operation({ id: status, gameId: g.id, status }));
+    for (const suffix of ['', ':synthetic-channel'])
+      f.repository.set(`permissionsBefore:${status}${suffix}`, [
+        { id: 'synthetic-member', allow: '0', deny: '1024' },
+      ]);
+  }
+  f.repository.saveOperation(operation({ id: 'completed-other', gameId: g.id, status: 'pending' }));
+  f.repository.set('permissionsBefore:completed-other', [{ id: 'preserved' }]);
+  await f.nexus.maintain();
+  f.clock.at = start + 30 * DAY;
+  await f.nexus.maintain();
+  for (const status of ['completed', 'failed'])
+    for (const suffix of ['', ':synthetic-channel'])
+      expect(f.repository.get(`permissionsBefore:${status}${suffix}`)).toBeUndefined();
+  for (const status of ['pending', 'review'])
+    for (const suffix of ['', ':synthetic-channel'])
+      expect(f.repository.get(`permissionsBefore:${status}${suffix}`)).toBeDefined();
+  expect(f.repository.get('permissionsBefore:completed-other')).toBeDefined();
+});
+
+test('old orphan permission snapshots receive their own rollout grace and import/adoption evidence is preserved', async () => {
+  const start = f.clock.now();
+  f.repository.set('retentionStartedAt', start - 100 * DAY);
+  f.repository.set('permissionsBefore:legacy-orphan', [{ id: 'old' }]);
+  f.repository.set('permissionsBefore:legacy-orphan:channel', [{ id: 'old' }]);
+  f.repository.set('migration:import-receipt', { appliedAt: start - 100 * DAY });
+  f.repository.set('permissionsBefore:import-receipt:channel', [{ id: 'import' }]);
+  f.repository.set('archiveAdoption', { status: 'review', plan: 'unresolved-adoption' });
+  f.repository.set('permissionsBefore:unresolved-adoption:channel', [{ id: 'adoption' }]);
+  await f.nexus.maintain();
+  expect(f.repository.get('permissionsBefore:legacy-orphan')).toBeDefined();
+  f.clock.at = start + 30 * DAY - 1;
+  await f.nexus.maintain();
+  expect(f.repository.get('permissionsBefore:legacy-orphan:channel')).toBeDefined();
+  f.clock.at++;
+  await f.nexus.maintain();
+  expect(f.repository.get('permissionsBefore:legacy-orphan')).toBeUndefined();
+  expect(f.repository.get('permissionsBefore:legacy-orphan:channel')).toBeUndefined();
+  expect(f.repository.get('permissionsBefore:import-receipt:channel')).toBeDefined();
+  expect(f.repository.get('permissionsBefore:unresolved-adoption:channel')).toBeDefined();
+  expect(f.repository.get('migration:import-receipt')).toBeDefined();
+});
+
+test('legacy completed operations and their permission copies share the full 30-day grace', async () => {
+  const start = f.clock.now();
+  f.repository.saveOperation(operation({ startedAt: start - 365 * DAY, completedAt: undefined }));
+  f.repository.set('permissionsBefore:operation', [{ id: 'legacy' }]);
+  await f.nexus.maintain();
+  expect(f.repository.get('permissionsBefore:operation')).toBeDefined();
+  f.clock.at = start + 30 * DAY - 1;
+  await f.nexus.maintain();
+  expect(f.repository.get('permissionsBefore:operation')).toBeDefined();
+  f.clock.at++;
+  await f.nexus.maintain();
+  expect(f.repository.get('permissionsBefore:operation')).toBeUndefined();
+});
+
+test('a permission cleanup failure rolls back the related operation purge', async () => {
+  f.repository.saveOperation(operation());
+  f.repository.set('permissionsBefore:operation', [{ id: 'synthetic' }]);
+  f.repository.db.exec(
+    `CREATE TRIGGER reject_acl_cleanup BEFORE DELETE ON metadata WHEN OLD.key='permissionsBefore:operation' BEGIN SELECT RAISE(ABORT,'synthetic failure'); END`,
+  );
+  f.clock.at += 31 * DAY;
+  await expect(f.nexus.maintain()).rejects.toThrow('synthetic failure');
+  expect(f.repository.operations()).toHaveLength(1);
+  expect(f.repository.get('permissionsBefore:operation')).toBeDefined();
+});

@@ -1,3 +1,4 @@
+import { imageWork } from './image-work.js';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import type { Asset, Candidate } from '../domain/model.js';
@@ -30,6 +31,7 @@ function publicData(value: unknown): unknown {
   };
 }
 export class Rawg implements Catalogue {
+  private readonly pending = new Map<string, Promise<unknown>>();
   constructor(
     private readonly key: string,
     private readonly repository: Repository,
@@ -40,6 +42,21 @@ export class Rawg implements Catalogue {
     const cacheKey = `rawg:${path}:${JSON.stringify(params)}`;
     const cached = this.repository.get<{ expires: number; data: unknown }>(cacheKey);
     if (cached && cached.expires > Date.now()) return cached.data;
+    const existing = this.pending.get(cacheKey);
+    if (existing) return existing;
+    const task = this.remoteRequest(path, params, cacheKey);
+    this.pending.set(cacheKey, task);
+    try {
+      return await task;
+    } finally {
+      this.pending.delete(cacheKey);
+    }
+  }
+  private async remoteRequest(
+    path: string,
+    params: Record<string, string>,
+    cacheKey: string,
+  ): Promise<unknown> {
     const month = new Date().toISOString().slice(0, 7);
     const budgetKey = `rawg-budget:${month}`;
     const used = this.repository.get<number>(budgetKey) || 0;
@@ -51,8 +68,16 @@ export class Rawg implements Catalogue {
     ).catch(() => {
       throw new DomainError('catalogueUnavailable');
     });
-    if (!response.ok) throw new DomainError('catalogueUnavailable');
-    const data = publicData(await response.json());
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new DomainError('catalogueUnavailable');
+    }
+    let data: unknown;
+    try {
+      data = publicData(await response.json());
+    } catch {
+      throw new DomainError('catalogueUnavailable');
+    }
     this.repository.set(cacheKey, { expires: Date.now() + 600000, data });
     return data;
   }
@@ -97,8 +122,9 @@ export class Rawg implements Catalogue {
     }
     return candidate;
   }
-  async image(candidate: Candidate): Promise<Asset | null> {
+  async image(candidate: Candidate, signal?: AbortSignal): Promise<Asset | null> {
     if (!candidate.imageUrl) return null;
+    const source = candidate.imageUrl;
     const url = new URL(candidate.imageUrl);
     // Provider-owned origins only: no user supplied URL fetching, no redirects/private IPs.
     if (
@@ -109,51 +135,59 @@ export class Rawg implements Catalogue {
       url.port
     )
       throw new DomainError('invalidImage');
-    const response = await this.fetcher(url, {
-      signal: AbortSignal.timeout(10000),
-      redirect: 'error',
-    }).catch(() => {
-      throw new DomainError('invalidImage');
-    });
-    if (
-      !response.ok ||
-      !response.body ||
-      Number(response.headers.get('content-length') || 0) > 5_000_000
-    )
-      throw new DomainError('invalidImage');
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let length = 0;
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        length += value.byteLength;
-        if (length > 5_000_000) throw new DomainError('invalidImage');
-        chunks.push(value);
+    return imageWork.run(async () => {
+      const response = await this.fetcher(url, {
+        signal: AbortSignal.any([AbortSignal.timeout(10000), ...(signal ? [signal] : [])]),
+        redirect: 'error',
+      }).catch(() => {
+        signal?.throwIfAborted();
+        throw new DomainError('invalidImage');
+      });
+      if (
+        !response.ok ||
+        !response.body ||
+        Number(response.headers.get('content-length') || 0) > 5_000_000
+      ) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new DomainError('invalidImage');
       }
-    } finally {
-      await reader.cancel().catch(() => undefined);
-    }
-    try {
-      const bytes = await sharp(Buffer.concat(chunks), {
-        limitInputPixels: 16_000_000,
-        animated: false,
-      })
-        .rotate()
-        .resize(64, 64, { fit: 'contain', background: '#00000000' })
-        .png()
-        .toBuffer();
-      if (bytes.length > 256 * 1024) throw new Error('Image limit');
-      return {
-        id: createHash('sha256').update(bytes).digest('hex'),
-        bytes,
-        mime: 'image/png',
-        source: candidate.imageUrl,
-        sha256: createHash('sha256').update(bytes).digest('hex'),
-      };
-    } catch {
-      throw new DomainError('invalidImage');
-    }
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let length = 0;
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          length += value.byteLength;
+          if (length > 5_000_000) throw new DomainError('invalidImage');
+          chunks.push(value);
+        }
+      } finally {
+        await reader.cancel().catch(() => undefined);
+      }
+      signal?.throwIfAborted();
+      try {
+        const bytes = await sharp(Buffer.concat(chunks), {
+          limitInputPixels: 16_000_000,
+          animated: false,
+        })
+          .rotate()
+          .resize(64, 64, { fit: 'contain', background: '#00000000' })
+          .png()
+          .toBuffer();
+        signal?.throwIfAborted();
+        if (bytes.length > 256 * 1024) throw new Error('Image limit');
+        return {
+          id: createHash('sha256').update(bytes).digest('hex'),
+          bytes,
+          mime: 'image/png',
+          source,
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+        };
+      } catch {
+        signal?.throwIfAborted();
+        throw new DomainError('invalidImage');
+      }
+    }, signal);
   }
 }

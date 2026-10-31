@@ -1,3 +1,4 @@
+import { recordInteraction } from './interaction-timing.js';
 import { setImmediate } from 'node:timers/promises';
 import {
   ChannelType,
@@ -41,6 +42,7 @@ import { AdminViews, adminParent, type AdminDraft, type AdminRoute } from './adm
 import { editView, ownedSession, Views, type View } from './views.js';
 import { locale, translator } from './i18n.js';
 import { interactionFailure } from './interaction-failure.js';
+import { Replies } from './replies.js';
 
 type AdminInteraction =
   | ButtonInteraction
@@ -73,22 +75,17 @@ const terminal = (err: unknown) =>
   'code' in err &&
   ([10062, 10015, 40060, 50027].includes(Number(err.code)) ||
     err.code === 'InteractionAlreadyReplied');
-interface ReplyState {
-  token: symbol;
-  expiresAt: number;
-  abort: AbortController;
-  writes: Promise<void>;
-}
 export class AdminController {
   readonly views: AdminViews;
   readonly service: Administration;
-  private readonly replies = new Map<string, ReplyState>();
   constructor(
     readonly nexus: Nexus,
     readonly gateway: DiscordCommunity,
     readonly cachedActor: (i: Interaction) => Actor,
     readonly installMember: (channelId?: string) => Promise<void>,
     private readonly log: AppLogger = logger.child({ component: 'admin-interactions' }),
+    private readonly replies = new Replies(),
+    private readonly shutdownSignal?: AbortSignal,
   ) {
     this.views = new AdminViews(nexus.repository, gateway.config.guildId, nexus.policy.maxGames);
     this.service = new Administration(nexus, () => Date.now(), gateway.config.guildId, {
@@ -101,43 +98,11 @@ export class AdminController {
       ('customId' in i && /^(na:|nam:|nx:admin(?::|$))/.test(i.customId))
     );
   }
-  private replyKey(i: Interaction): string | undefined {
-    if ('message' in i && i.message?.flags.has(MessageFlags.Ephemeral))
-      return `${i.user.id}:${i.message.id}`;
-    return undefined;
-  }
   invalidateReply(i: Interaction): void {
-    const key = this.replyKey(i);
-    if (key) this.replies.get(key)?.abort.abort();
+    this.replies.invalidate(i);
   }
   private beginReply(i: AdminInteraction) {
-    const now = Date.now();
-    for (const [key, state] of this.replies)
-      if (state.expiresAt <= now) {
-        state.abort.abort();
-        this.replies.delete(key);
-      }
-    const key = this.replyKey(i),
-      existing = key ? this.replies.get(key) : undefined;
-    existing?.abort.abort();
-    const token = Symbol(),
-      abort = new AbortController(),
-      state: ReplyState = existing || { token, abort, expiresAt: now, writes: Promise.resolve() };
-    Object.assign(state, { token, abort, expiresAt: now + 15 * 60000 });
-    if (key) this.replies.set(key, state);
-    const current = () => state.token === token && !abort.signal.aborted;
-    return {
-      signal: abort.signal,
-      current,
-      write: (payload: View): Promise<void> => {
-        const write = state.writes.then(async () => {
-          if (current()) await i.editReply(editView(payload));
-        });
-        // A failed edit must not prevent a newer navigation from displaying its page.
-        state.writes = write.catch(() => {});
-        return write;
-      },
-    };
+    return this.replies.begin(i);
   }
   private draft(route: AdminRoute): AdminDraft {
     if ('draft' in route) return route.draft;
@@ -410,6 +375,8 @@ export class AdminController {
     const language = locale(i.locale),
       t = translator(language);
     const startedAt = Date.now();
+    const timingStartedAt = performance.now();
+    let outcome: 'completed' | 'failed' | 'cancelled' = 'completed';
     let phase = 'authorize',
       attempted = false,
       s: Session | undefined,
@@ -479,6 +446,7 @@ export class AdminController {
           throw new DomainError('expired');
       }
       const modalActions = ['search', 'reject', 'clarify', 'edit', 'rawg', 'identity', 'upload'];
+      replyState = this.beginReply(i);
       if (i.isButton() && modalActions.includes(action)) {
         if (s?.kind !== 'admin') throw new DomainError('expired');
         phase = 'show_modal';
@@ -486,7 +454,6 @@ export class AdminController {
         await i.showModal(this.modal(action, s, route, language));
         return;
       }
-      replyState = this.beginReply(i);
       phase = 'acknowledge';
       attempted = true;
       if (
@@ -494,7 +461,10 @@ export class AdminController {
         (!i.isChatInputCommand() && !i.isModalSubmit() && s !== undefined)
       )
         await i.deferUpdate();
-      else await i.deferReply({ flags: MessageFlags.Ephemeral });
+      else {
+        const response = await i.deferReply({ flags: MessageFlags.Ephemeral, withResponse: true });
+        replyState.bind(response?.interaction?.responseMessageId);
+      }
       this.log.debug({ event: 'admin_interaction_acknowledged', ...context() });
       if (action === 'diagnose' && route.page === 'maintenance')
         await respond(
@@ -508,6 +478,7 @@ export class AdminController {
       requireAdmin(actor);
       phase = 'handle';
       if (
+        !['home', 'back'].includes(action) &&
         s?.kind === 'admin' &&
         (route.page === 'game' || route.page === 'request') &&
         s.data.entity !==
@@ -536,12 +507,10 @@ export class AdminController {
         } else if (action === 'rawg') {
           const draft = this.draft(route),
             query = i.fields.getTextInputValue('query').trim();
-          route = {
-            page: 'results',
-            draft,
-            query,
-            items: (await this.nexus.catalogue.search(query)).slice(0, 10),
-          };
+          replyState.signal.throwIfAborted();
+          const items = await this.nexus.catalogue.search(query);
+          replyState.signal.throwIfAborted();
+          route = { page: 'results', draft, query, items: items.slice(0, 10) };
         } else if (action === 'identity') {
           const draft = this.draft(route);
           const name = i.fields.getTextInputValue('name').trim();
@@ -552,7 +521,8 @@ export class AdminController {
             files = i.fields.getUploadedFiles('image', true);
           if (files.size !== 1 || files.first()!.size > 5_000_000)
             throw new DomainError('invalidImage');
-          const asset = await discordAttachment(files.first()!.url);
+          const asset = await discordAttachment(files.first()!.url, false, replyState.signal);
+          replyState.signal.throwIfAborted();
           this.nexus.repository.saveAsset(asset);
           route = { page: 'prepare', draft: { ...draft, assetId: asset.id } };
         } else if (action === 'edit') {
@@ -668,8 +638,20 @@ export class AdminController {
         else if (action === 'candidate' && route.page === 'results') {
           const id = Number(value);
           if (!route.items.some((c) => c.id === id)) throw new DomainError('invalidInput');
+          replyState.signal.throwIfAborted();
           const candidate = await this.nexus.catalogue.get(id);
-          const asset = await this.nexus.catalogue.image(candidate).catch(() => null);
+          replyState.signal.throwIfAborted();
+          const asset = await this.nexus.catalogue
+            .image(candidate, replyState.signal)
+            .catch((error) => {
+              if (
+                replyState?.signal.aborted ||
+                (error instanceof DomainError && error.code === 'imageBusy')
+              )
+                throw error;
+              return null;
+            });
+          replyState.signal.throwIfAborted();
           if (asset) this.nexus.repository.saveAsset(asset);
           route = {
             page: 'prepare',
@@ -733,7 +715,9 @@ export class AdminController {
               await respond(this.views.render(actor!, language, { page: 'maintenance', progress }));
             }
           },
-          replyState.signal,
+          this.shutdownSignal
+            ? AbortSignal.any([replyState.signal, this.shutdownSignal])
+            : replyState.signal,
         );
         route = { page: 'maintenance', preview, index: 0 };
       } else if (action === 'reconcile' || action === 'rotate') {
@@ -807,6 +791,8 @@ export class AdminController {
         await respond(this.views.working(language));
         if (a.kind === 'panel')
           await this.nexus.mutex.run(async () => {
+            actor = await this.gateway.actor(i.user.id);
+            requireAdmin(actor);
             phase = 'panel_confirm_permissions';
             if ((await this.panelState(a.target, a.channelId)) !== a.permissions)
               throw new DomainError('staleAction');
@@ -875,7 +861,12 @@ export class AdminController {
       } else throw new DomainError('invalidInput');
       await respond(this.views.render(actor, language, route));
     } catch (err) {
-      if (replyState?.signal.aborted && err === replyState.signal.reason) {
+      outcome = 'failed';
+      if (
+        (replyState?.signal.aborted && err === replyState.signal.reason) ||
+        (this.shutdownSignal?.aborted && err === this.shutdownSignal.reason)
+      ) {
+        outcome = 'cancelled';
         this.log.debug({ event: 'admin_diagnostic_cancelled', ...context() });
         return;
       }
@@ -932,6 +923,14 @@ export class AdminController {
       } catch (error) {
         this.log.warn({ event: 'admin_error_response_failed', interactionId: i.id, err: error });
       }
+    } finally {
+      recordInteraction(
+        this.log,
+        timingStartedAt,
+        { ...context(), surface: 'admin' },
+        outcome,
+        replyState?.current() === false,
+      );
     }
   }
 }

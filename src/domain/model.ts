@@ -76,6 +76,13 @@ export class DomainError extends Error {
   }
 }
 export const DAY = 86_400_000;
+export function blocksMemberCreation(operation: Operation, actorId: string, now: number): boolean {
+  return (
+    operation.actorId === actorId &&
+    (operation.status === 'pending' ||
+      (operation.status === 'review' && operation.startedAt + DAY > now))
+  );
+}
 export function normalize(value: string): string {
   return value
     .normalize('NFKD')

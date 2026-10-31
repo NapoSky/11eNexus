@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   archiveCandidates,
+  channelName,
   normalize,
   DAY,
   DomainError,
@@ -8,7 +9,7 @@ import {
   type Actor,
   type Game,
 } from '../domain/model.js';
-import type { Nexus, PreparedGame } from './nexus.js';
+import type { Nexus, PreparedGame, ReconciliationObservation } from './nexus.js';
 import { auditResources, type ResourceAudit } from './resource-audit.js';
 import type { Scheduler, World } from './ports.js';
 
@@ -47,6 +48,7 @@ export interface AdminPlan {
   world: string;
   expiresAt: number;
   maintenance?: string;
+  archiveIds?: string[];
 }
 export interface MaintenancePreview {
   revision: string;
@@ -69,43 +71,100 @@ export class Administration {
     private readonly guildId = '',
     private readonly scheduler: Scheduler = { yield: async () => {} },
   ) {}
-  private worldVersion(world: World): string {
+  private needsWorld(action?: AdminAction): boolean {
+    return (
+      !action ||
+      ['create', 'activate', 'archive', 'repair', 'reconcile', 'rotate'].includes(action.kind) ||
+      (action.kind === 'edit' && action.align)
+    );
+  }
+  private async world(action?: AdminAction): Promise<World> {
+    if (this.needsWorld(action)) return this.nexus.community.snapshot();
+    return {
+      complete: true,
+      roleIcons: false,
+      archiveCategoryIds: [],
+      channels: [],
+      roles: [],
+      memberIds: [],
+    };
+  }
+  private worldVersion(world: World, action?: AdminAction): string {
+    if (!this.needsWorld(action)) return fingerprint(null);
+    const global = !action || action.kind === 'reconcile' || action.kind === 'rotate';
+    const game =
+      action && 'gameId' in action ? this.nexus.repository.game(action.gameId) : undefined;
+    const channelIds = [game?.channelId, action?.kind === 'repair' ? action.channelId : undefined];
+    const roleIds = [game?.roleId, action?.kind === 'repair' ? action.roleId : undefined];
+    const capacity =
+      action?.kind === 'create' || action?.kind === 'activate' || action?.kind === 'archive';
     return fingerprint({
       complete: world.complete,
-      roleIcons: world.roleIcons,
-      archives: [...world.archiveCategoryIds].sort(),
-      members: [...world.memberIds].sort(),
-      channels: [...world.channels].sort((a, b) => a.id.localeCompare(b.id)),
-      roles: [...world.roles]
+      roleIcons: capacity ? world.roleIcons : undefined,
+      archives:
+        global || capacity || action?.kind === 'repair'
+          ? [...world.archiveCategoryIds].sort()
+          : undefined,
+      channelCount: capacity ? world.channels.length : undefined,
+      roleCount: capacity ? world.roles.length : undefined,
+      channels: world.channels
+        .filter(
+          (c) =>
+            global ||
+            channelIds.includes(c.id) ||
+            (capacity &&
+              (c.id === this.nexus.policy.activeCategoryId ||
+                c.parentId === this.nexus.policy.activeCategoryId ||
+                world.archiveCategoryIds.includes(c.id) ||
+                world.archiveCategoryIds.includes(c.parentId || ''))) ||
+            (action?.kind === 'edit' &&
+              (c.name === action.name || c.name === channelName(action.name))),
+        )
+        .sort((a, b) => a.id.localeCompare(b.id)),
+      roles: world.roles
+        .filter(
+          (r) =>
+            global || roleIds.includes(r.id) || (action?.kind === 'edit' && r.name === action.name),
+        )
         .sort((a, b) => a.id.localeCompare(b.id))
-        .map((r) => ({
-          ...r,
-          members: [...r.members].sort(),
-          references: [...r.references].sort(),
+        .map(({ members: _members, ...role }) => ({
+          ...role,
+          references: [...role.references].sort(),
         })),
     });
   }
   revision(action?: AdminAction): string {
     const repo = this.nexus.repository;
-    const games = action && 'gameId' in action ? [repo.game(action.gameId)] : repo.games(true);
+    const global = !action || action.kind === 'reconcile' || action.kind === 'rotate';
+    const games =
+      action && 'gameId' in action
+        ? [repo.game(action.gameId)]
+        : global || action?.kind === 'create'
+          ? repo.games(true)
+          : [];
     const proposals =
       action && 'proposalId' in action && action.proposalId
         ? [repo.proposal(action.proposalId)]
         : [];
     return fingerprint({
-      games:
-        !action || action.kind === 'reconcile' || action.kind === 'rotate'
-          ? games
-          : games.map(entityVersion),
+      games: global ? games.map((g) => g && this.nexus.observedGame(g)) : games.map(entityVersion),
       proposals,
-      panels: [repo.get('panel'), repo.get('adminPanel')],
-      operations: repo.operations().filter((o) => ['pending', 'review'].includes(o.status)),
+      panels: action?.kind === 'panel' ? [repo.get('panel'), repo.get('adminPanel')] : undefined,
+      operations: repo
+        .operations()
+        .filter(
+          (o) =>
+            ['pending', 'review'].includes(o.status) &&
+            (global ||
+              action?.kind === 'create' ||
+              (action && 'gameId' in action && o.gameId === action.gameId)),
+        ),
     });
   }
   async plan(actor: Actor, action: AdminAction, preview?: MaintenancePreview): Promise<AdminPlan> {
     requireAdmin(actor);
     return this.nexus.mutex.run(async () => {
-      const world = await this.nexus.community.snapshot();
+      const world = await this.world(action);
       if (!world.complete) throw new DomainError('incomplete');
       if (
         (action.kind === 'reject' || action.kind === 'clarify') &&
@@ -151,6 +210,12 @@ export class Administration {
       if (action.kind === 'repair') {
         const channel = world.channels.find((c) => c.id === action.channelId),
           role = world.roles.find((r) => r.id === action.roleId);
+        this.nexus.assertRepairResources(
+          action.channelId,
+          action.roleId,
+          role?.name,
+          channel?.topic,
+        );
         if (!channel || ![0, 5, 15, 16].includes(channel.type) || !role)
           throw new DomainError('invalidInput');
         if (role.permissions !== '0') throw new DomainError('repairRolePermissions');
@@ -197,7 +262,7 @@ export class Administration {
           throw new DomainError('needsReview');
       }
       const revision = this.revision(action);
-      const version = this.worldVersion(world);
+      const version = this.worldVersion(world, action);
       if (preview && (preview.revision !== revision || preview.world !== version))
         throw new DomainError('staleAction');
       return {
@@ -208,6 +273,7 @@ export class Administration {
         world: version,
         expiresAt: this.now() + 5 * 60000,
         maintenance: preview?.signature,
+        archiveIds: action.kind === 'rotate' ? preview?.candidates : undefined,
       };
     });
   }
@@ -220,18 +286,20 @@ export class Administration {
     signal?.throwIfAborted();
     await progress?.({ phase: 'waiting', current: 0, total: 0 });
     signal?.throwIfAborted();
-    return this.nexus.mutex.run(() => this.inspectInternal(progress, signal));
+    return this.inspectInternal(progress, signal);
   }
   private async inspectInternal(
     progress?: (value: MaintenanceProgress) => Promise<void>,
     signal?: AbortSignal,
+    observation?: ReconciliationObservation,
   ): Promise<MaintenancePreview> {
     signal?.throwIfAborted();
     await progress?.({ phase: 'resources', current: 0, total: 0 });
     signal?.throwIfAborted();
     const { nexus } = this;
     const repo = nexus.repository;
-    const world = await nexus.community.snapshot(signal);
+    const revision = this.revision();
+    const world = observation?.world || (await nexus.community.snapshot(signal));
     signal?.throwIfAborted();
     if (!world.complete) throw new DomainError('incomplete');
     const changes: MaintenancePreview['changes'] = [];
@@ -243,9 +311,9 @@ export class Administration {
     let checked = 0;
     for (const current of catalogue) {
       signal?.throwIfAborted();
-      await this.scheduler.yield();
+      if (!observation) await this.scheduler.yield();
       signal?.throwIfAborted();
-      const game = { ...current };
+      const game = nexus.observedGame(current);
       if (
         repo
           .operations()
@@ -285,14 +353,32 @@ export class Administration {
           changes.push({ name: game.name, kind: 'subscriptions', count: observed.length });
       }
       if (game.state === 'active') {
-        const activity = await nexus.community
-          .activity(game, this.now() - 30 * DAY, signal)
-          .catch(() => ({ at: null, complete: false }));
+        const scanned = observation?.activities.get(game.id);
+        const needsHistory =
+          game.awaitingActivity || archiveCandidates([game], this.now(), 0).length > 0;
+        // A manually moved game gets a new activation grace period; old history
+        // cannot validate activity after that activation or make it expire now.
+        const activity =
+          current.state !== 'active'
+            ? { at: game.lastActivityAt, complete: true }
+            : observation
+              ? scanned?.channelId === game.channelId && scanned.activatedAt === game.activatedAt
+                ? scanned.activity
+                : { at: null, complete: false }
+              : needsHistory
+                ? await nexus.community
+                    .activity(game, this.now() - 30 * DAY, signal)
+                    .catch(() => ({ at: null, complete: false }))
+                : { at: game.lastActivityAt, complete: true };
         if (activity.at && activity.at > (game.lastActivityAt ?? 0))
           game.lastActivityAt = activity.at;
         if (activity.at && activity.at >= game.activatedAt) game.awaitingActivity = false;
-        if (activity.complete) trusted.add(game.id);
-        else unverified.push(game.name);
+        if (
+          activity.complete &&
+          (observation ? scanned?.historyRead : current.state === 'active' && needsHistory)
+        )
+          trusted.add(game.id);
+        if (!activity.complete) unverified.push(game.name);
       }
       if (
         game.lastActivityAt !== current.lastActivityAt ||
@@ -319,7 +405,7 @@ export class Administration {
       ],
       events: repo.events(),
     });
-    const revision = this.revision();
+    if (revision !== this.revision()) throw new DomainError('staleAction');
     const version = this.worldVersion(world);
     return {
       revision,
@@ -331,7 +417,11 @@ export class Administration {
       report,
     };
   }
-  async consume(actor: Actor, plan: AdminPlan): Promise<void> {
+  async consume(
+    actor: Actor,
+    plan: AdminPlan,
+    observation?: ReconciliationObservation,
+  ): Promise<void> {
     requireAdmin(actor);
     const repo = this.nexus.repository;
     if (
@@ -341,10 +431,15 @@ export class Administration {
     )
       throw new DomainError('staleAction');
     if (this.revision(plan.action) !== plan.revision) throw new DomainError('staleAction');
-    const world = await this.nexus.community.snapshot();
-    if (!world.complete || this.worldVersion(world) !== plan.world)
+    const world = observation?.world || (await this.world(plan.action));
+    if (!world.complete || this.worldVersion(world, plan.action) !== plan.world)
       throw new DomainError('staleAction');
-    if (plan.maintenance && (await this.inspectInternal()).signature !== plan.maintenance)
+    if (
+      plan.maintenance &&
+      (!observation ||
+        (await this.inspectInternal(undefined, undefined, observation)).signature !==
+          plan.maintenance)
+    )
       throw new DomainError('staleAction');
     repo.set(`admin-action:${plan.id}`, {
       actorId: actor.id,
@@ -355,7 +450,8 @@ export class Administration {
   async execute(actor: Actor, plan: AdminPlan, requester?: Actor): Promise<void> {
     requireAdmin(actor);
     const action = plan.action;
-    const guard = () => this.consume(actor, plan);
+    const guard = (observation?: ReconciliationObservation) =>
+      this.consume(actor, plan, observation);
     const nexus = this.nexus;
     if (action.kind === 'activate') await nexus.activate(actor, action.gameId, guard);
     else if (action.kind === 'archive') await nexus.archive(actor, action.gameId, guard);
@@ -375,7 +471,7 @@ export class Administration {
     else if (action.kind === 'create')
       await nexus.addByAdmin(actor, action.input, guard, action.proposalId, requester);
     else if (action.kind === 'reconcile' || action.kind === 'rotate')
-      await nexus.synchronize(action.kind === 'rotate', guard, actor);
+      await nexus.synchronize(action.kind === 'rotate', guard, actor, plan.archiveIds);
     else throw new DomainError('invalidInput');
   }
 }

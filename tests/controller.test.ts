@@ -4,7 +4,7 @@ import { DiscordCommunity } from '../src/infrastructure/discord.js';
 import { config } from '../src/infrastructure/config.js';
 import { nodes, controls, select, actionId } from './component-helpers.js';
 import { session } from '../src/presentation/views.js';
-import { admin, fixture, game, member } from './helpers.js';
+import { admin, asset, fixture, game, member } from './helpers.js';
 import { memberRateLimit } from './discord-errors.js';
 
 const log = {
@@ -66,12 +66,52 @@ function button(customId: string, roleIds = [gateway.config.memberRoleId]) {
 test('the public panel opens an ephemeral localized catalogue without editing its message', async () => {
   const i = button('nx:games');
   await controller.handle(i as unknown as Interaction);
-  expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+  expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral, withResponse: true });
   expect(i.deferUpdate).not.toHaveBeenCalled();
   expect(i.editReply).toHaveBeenCalledWith(
     expect.objectContaining({ allowedMentions: { parse: [] } }),
   );
   expect(JSON.stringify(i.editReply.mock.calls)).toContain('Jeux');
+});
+
+test('shutdown stops accepting gateway interactions while draining the accepted request', async () => {
+  let release!: () => void, entered!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  const started = new Promise<void>((r) => {
+    entered = r;
+  });
+  const handle = jest.spyOn(controller, 'handle').mockImplementation(async () => {
+    entered();
+    await gate;
+  });
+  controller.listen();
+  controller.listen();
+  client.emit('interactionCreate', button('nx:games') as unknown as Interaction);
+  await started;
+  controller.stopAccepting();
+  client.emit('interactionCreate', button('nx:games') as unknown as Interaction);
+  const pending = controller.drain();
+  expect(handle).toHaveBeenCalledTimes(1);
+  release();
+  await pending;
+});
+
+test('successful actions log total duration through the final response', async () => {
+  const i = button('nx:games');
+  await controller.handle(i as unknown as Interaction);
+  expect(log.info).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'interaction_completed',
+      surface: 'member',
+      outcome: 'completed',
+      elapsedMs: expect.any(Number),
+    }),
+  );
+  const firstReply = i.editReply.mock.invocationCallOrder.at(-1)!;
+  const completion = log.info.mock.invocationCallOrder.at(-1)!;
+  expect(completion).toBeGreaterThan(firstReply);
 });
 test('the published panel includes a persistent Archives entry and never pings members', async () => {
   const send = jest
@@ -124,7 +164,7 @@ test('a revoked Syndiqué role is detected through fresh REST before an activati
   await controller.handle(i as unknown as Interaction);
   expect(i.deferUpdate).toHaveBeenCalled();
   expect(f.community.move).not.toHaveBeenCalled();
-  expect(controls(i.editReply.mock.calls[0]![0])).toHaveLength(0);
+  expect(controls(i.editReply.mock.calls.at(-1)![0])).toHaveLength(0);
 });
 test('activation through a personal card changes its channel and renders the result privately', async () => {
   const g = f.add(game({ state: 'archived' }));
@@ -151,7 +191,7 @@ test('archives opens the archived catalogue privately without searching RAWG', a
   const response = JSON.stringify(i.editReply.mock.calls);
   expect(response).toContain('Archived game');
   expect(response).not.toContain('Active game');
-  expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+  expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral, withResponse: true });
   expect(f.catalogue.search).not.toHaveBeenCalled();
 });
 test('selecting Archived in the catalogue filter displays games outside the active list', async () => {
@@ -255,7 +295,7 @@ test('an expired autocomplete acknowledgement is not retried', async () => {
 });
 
 function response(i: ReturnType<typeof button>) {
-  return i.editReply.mock.calls[0]![0];
+  return i.editReply.mock.calls.at(-1)![0];
 }
 function click(payload: unknown, action: string) {
   return button(actionId(payload, action));
@@ -341,7 +381,11 @@ test.each([true, false])(
     await controller.handle(i as unknown as Interaction);
     expect(i.deferUpdate).toHaveBeenCalledTimes(fromPrivate ? 1 : 0);
     expect(i.deferReply).toHaveBeenCalledTimes(fromPrivate ? 0 : 1);
-    if (!fromPrivate) expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+    if (!fromPrivate)
+      expect(i.deferReply).toHaveBeenCalledWith({
+        flags: MessageFlags.Ephemeral,
+        withResponse: true,
+      });
     expect(response(i)).toMatchObject({
       content: null,
       embeds: [],
@@ -566,7 +610,10 @@ test('new game alerts open privately, read Discord, and acknowledge before chang
   const entry = button('nx:new-game-alerts');
   await controller.handle(entry as unknown as Interaction);
   expect(subscription).toHaveBeenCalledWith(member);
-  expect(entry.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+  expect(entry.deferReply).toHaveBeenCalledWith({
+    flags: MessageFlags.Ephemeral,
+    withResponse: true,
+  });
   expect(entry.deferUpdate).not.toHaveBeenCalled();
   const disable = click(response(entry), 'new-game-alerts-off');
   await controller.handle(disable as unknown as Interaction);
@@ -593,7 +640,10 @@ test('recent games open privately and preserve sorting, search and page through 
   for (let i = 0; i < 45; i++) f.add(game({ name: `Recent ${i}`, addedAt: Date.now() - i * 1000 }));
   const entry = button('nx:recent');
   await controller.handle(entry as unknown as Interaction);
-  expect(entry.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+  expect(entry.deferReply).toHaveBeenCalledWith({
+    flags: MessageFlags.Ephemeral,
+    withResponse: true,
+  });
   const next = click(response(entry), 'next');
   await controller.handle(next as unknown as Interaction);
   const ids = select(response(next)).map((o) => o.value);
@@ -623,11 +673,71 @@ test.each(['fr', 'en'])(
     jest.spyOn(f.nexus, 'newGameAlerts').mockRejectedValueOnce(memberRateLimit(22.1));
     const i = { ...button('nx:new-game-alerts'), locale: language };
     await controller.handle(i as unknown as Interaction);
-    expect(i.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
+    expect(i.deferReply).toHaveBeenCalledWith({
+      flags: MessageFlags.Ephemeral,
+      withResponse: true,
+    });
     expect(JSON.stringify(response(i))).toContain('23 s');
     expect(JSON.stringify(response(i))).not.toContain('private-');
     expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ code: 'discordRateLimited' }));
     expect(log.error).not.toHaveBeenCalled();
     expect(i.reply).not.toHaveBeenCalled();
+  },
+);
+
+test.each(['details', 'image'] as const)(
+  'leaving a candidate during %s loading stops subsequent downloads and asset persistence',
+  async (phase) => {
+    const candidate = await f.catalogue.get(123);
+    const start = controller.views.candidates(member, 'fr', 'Game', [candidate]);
+    const message = {
+      id: 'shared-private-preview',
+      flags: { has: (flag: number) => flag === MessageFlags.Ephemeral },
+    };
+    const choose = {
+      ...click(start, 'candidate'),
+      message,
+      values: ['123'],
+      isButton: () => false,
+      isStringSelectMenu: () => true,
+    };
+    let entered!: () => void, release!: () => void;
+    const waiting = new Promise<void>((r) => {
+      entered = r;
+    });
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    if (phase === 'details')
+      jest.mocked(f.catalogue.get).mockImplementationOnce(async () => {
+        entered();
+        await gate;
+        return candidate;
+      });
+    else
+      jest.mocked(f.catalogue.image).mockImplementationOnce(async () => {
+        entered();
+        await gate;
+        return asset;
+      });
+    const save = jest.spyOn(f.repository, 'saveAsset');
+    const pending = controller.handle(choose as unknown as Interaction);
+    try {
+      await waiting;
+      const home = { ...click(start, 'home'), message };
+      await controller.handle(home as unknown as Interaction);
+      release();
+      await pending;
+      if (phase === 'details') expect(f.catalogue.image).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+      expect(choose.editReply).not.toHaveBeenCalled();
+      expect(JSON.stringify(response(home))).toContain('11eNexus');
+      expect(log.debug).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'interaction_read_cancelled' }),
+      );
+    } finally {
+      release();
+      await pending;
+    }
   },
 );

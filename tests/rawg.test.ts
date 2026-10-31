@@ -104,3 +104,81 @@ test('oversized response is rejected before decoding', async () => {
     code: 'invalidImage',
   });
 });
+
+test('simultaneous identical searches share one provider request and one budget reservation', async () => {
+  let release!: (value: Response) => void;
+  const fetcher = jest.fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>().mockImplementation(
+    () =>
+      new Promise((r) => {
+        release = r;
+      }),
+  );
+  const rawg = new Rawg('KEY', store, fetcher);
+  const budget = `rawg-budget:${new Date().toISOString().slice(0, 7)}`;
+  store.set(budget, 17999);
+  const results = Array.from({ length: 8 }, () => rawg.search(' Same query '));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(store.get(budget)).toBe(18000);
+  release(response({ results: [{ id: 1, name: 'Same query' }] }));
+  expect((await Promise.all(results)).every((items) => items[0]?.id === 1)).toBe(true);
+});
+
+test('a failed shared request is cleared so the same search can be retried', async () => {
+  const fetcher = jest
+    .fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>()
+    .mockRejectedValueOnce(new Error('synthetic failure'))
+    .mockResolvedValueOnce(response({ results: [{ id: 1, name: 'Recovered' }] }));
+  const rawg = new Rawg('KEY', store, fetcher);
+  const results = await Promise.allSettled([rawg.search('Game'), rawg.search('Game')]);
+  expect(results.every((item) => item.status === 'rejected')).toBe(true);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect((await rawg.search('Game'))[0]?.name).toBe('Recovered');
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+test('different queries are fetched independently rather than sharing another result', async () => {
+  const fetcher = jest
+    .fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>()
+    .mockResolvedValueOnce(response({ results: [{ id: 1, name: 'First' }] }))
+    .mockResolvedValueOnce(response({ results: [{ id: 2, name: 'Second' }] }));
+  const rawg = new Rawg('KEY', store, fetcher);
+  const [first, second] = await Promise.all([rawg.search('First'), rawg.search('Second')]);
+  expect(first[0]?.id).toBe(1);
+  expect(second[0]?.id).toBe(2);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+test('simultaneous edition previews share the details and parent fallback requests', async () => {
+  const fetcher = jest
+    .fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>()
+    .mockResolvedValueOnce(response({ id: 1, name: 'Edition', parents_count: 1 }))
+    .mockResolvedValueOnce(
+      response({ results: [{ id: 2, name: 'Parent', background_image: candidate.imageUrl }] }),
+    );
+  const rawg = new Rawg('KEY', store, fetcher);
+  const previews = await Promise.all(Array.from({ length: 5 }, () => rawg.get(1)));
+  expect(previews.every((item) => item.id === 1 && item.parentId === 2)).toBe(true);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+test('invalid provider JSON becomes a recoverable catalogue error and can be retried', async () => {
+  const fetcher = jest
+    .fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>()
+    .mockResolvedValueOnce(new Response('{malformed'))
+    .mockResolvedValueOnce(response({ results: [] }));
+  const rawg = new Rawg('KEY', store, fetcher);
+  await expect(rawg.search('Game')).rejects.toMatchObject({ code: 'catalogueUnavailable' });
+  await expect(rawg.search('Game')).resolves.toEqual([]);
+});
+
+test('a rejected provider image cancels its unread body', async () => {
+  const cancel = jest.fn();
+  const stream = new ReadableStream<Uint8Array>({ cancel });
+  const fetcher = jest
+    .fn<ReturnType<typeof fetch>, Parameters<typeof fetch>>()
+    .mockResolvedValue(new Response(stream, { headers: { 'content-length': '5000001' } }));
+  await expect(new Rawg('KEY', store, fetcher).image(candidate)).rejects.toMatchObject({
+    code: 'invalidImage',
+  });
+  expect(cancel).toHaveBeenCalledTimes(1);
+});

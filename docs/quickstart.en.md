@@ -10,6 +10,8 @@ The public panel and private pages use **Components V2**, with short explanation
 
 After rebuilding the image, stop the bot and rerun `docker compose run --rm bot node dist/cli.js setup`, then `docker compose up -d`. Setup converts the existing panel message to V2 without a duplicate or another import. Discord makes this message conversion permanent; future edits and panel moves retain V2. Old public buttons remain compatible during the transition.
 
+Use Node **26** and pnpm **12.14.0** for local development. The image and CI follow Node 26. See [operations](operations.md) for graceful shutdown, resource bounds, health checks and verified backups.
+
 1. Copy `.env.example` to `.env` and supply the existing Discord bot token, guild ID and RAWG key. Protect it with `chmod 600 .env`.
 2. Enable **Server Members Intent** in Discord’s Developer Portal. Place the bot’s role above game roles. Grant channel/role management, history, attachments/embeds, thread management, and role mention permissions. Onboarding edits also require server management. Message content intent is unnecessary.
 3. Build with `docker compose build --pull`, then run `docker compose run --rm bot node dist/cli.js doctor` for a read-only check.

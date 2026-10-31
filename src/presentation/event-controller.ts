@@ -1,3 +1,4 @@
+import { recordInteraction } from './interaction-timing.js';
 import {
   LabelBuilder,
   MessageFlags,
@@ -19,56 +20,27 @@ import type { Session } from '../application/ports.js';
 import type { DiscordCommunity } from '../infrastructure/discord.js';
 import { logger, type AppLogger } from '../infrastructure/logger.js';
 import { EventViews, eventHome, type EventRoute } from './event-views.js';
-import { editView, ownedSession, session, type View } from './views.js';
+import { ownedSession, session } from './views.js';
 import { locale, translator } from './i18n.js';
 import { interactionFailure } from './interaction-failure.js';
+import { Replies } from './replies.js';
 
 export class EventController {
   readonly views: EventViews;
-  private readonly replies = new Map<
-    string,
-    { token: symbol; writes: Promise<void>; expiresAt: number }
-  >();
   constructor(
     readonly service: EventService,
     readonly gateway: DiscordCommunity,
     readonly cachedActor: (i: Interaction) => Actor,
     readonly log: AppLogger = logger,
+    private readonly replies = new Replies(),
   ) {
     this.views = new EventViews(service.repository, gateway.config.guildId);
   }
   accepts(i: Interaction): boolean {
     return 'customId' in i && i.customId.startsWith('ne:');
   }
-  private key(i: Interaction): string | undefined {
-    return 'message' in i && i.message?.flags.has(MessageFlags.Ephemeral)
-      ? `${i.user.id}:${i.message.id}`
-      : undefined;
-  }
   invalidateReply(i: Interaction): void {
-    const key = this.key(i);
-    if (key && this.replies.has(key)) this.replies.get(key)!.token = Symbol();
-  }
-  private begin(i: Interaction) {
-    for (const [key, value] of this.replies)
-      if (value.expiresAt <= Date.now()) this.replies.delete(key);
-    const key = this.key(i),
-      token = Symbol();
-    const state = (key ? this.replies.get(key) : undefined) || {
-      token,
-      writes: Promise.resolve(),
-      expiresAt: 0,
-    };
-    state.token = token;
-    state.expiresAt = Date.now() + 15 * 60000;
-    if (key) this.replies.set(key, state);
-    return async (view: View) => {
-      const write = state.writes.then(async () => {
-        if (state.token === token && 'editReply' in i) await i.editReply(editView(view));
-      });
-      state.writes = write.catch(() => {});
-      await write;
-    };
+    this.replies.invalidate(i);
   }
   private modal(
     action: string,
@@ -136,12 +108,43 @@ export class EventController {
     const startedAt = Date.now();
     const context = () => ({
       interactionId: i.id,
+      action: [
+        'home',
+        'back',
+        'create',
+        'game',
+        'edit',
+        'search',
+        'search-form',
+        'create-form',
+        'edit-form',
+        'event',
+        'announcement-tag',
+        'close-only',
+        'refresh',
+        'close',
+        'repair',
+        'confirm',
+        'subscribe',
+        'enable',
+        'disable',
+        'active',
+        'archived',
+        'all',
+        'next',
+        'previous',
+      ].includes(action || '')
+        ? action
+        : 'other',
       phase,
       elapsedMs: Date.now() - startedAt,
       receivedAgeMs: Math.max(0, startedAt - i.createdTimestamp),
       gatewayPingMs: this.gateway.client.ws.ping >= 0 ? this.gateway.client.ws.ping : undefined,
     });
-    const respond = this.begin(i);
+    const timingStartedAt = performance.now();
+    let outcome: 'completed' | 'failed' | 'cancelled' = 'completed';
+    const reply = this.replies.begin(i);
+    const respond = reply.write;
     try {
       actor = this.cachedActor(i);
       const memberAction = ['subscribe', 'enable', 'disable'].includes(action!);
@@ -156,7 +159,6 @@ export class EventController {
       // showModal is the initial response: no network or mutex wait may precede it.
       if (!i.isModalSubmit() && (action === 'search' || action === 'edit' || action === 'game')) {
         if (!s) throw new DomainError('expired');
-        this.invalidateReply(i);
         let modal: ModalBuilder;
         if (action === 'search') modal = this.modal('search-form', s, language);
         else if (action === 'game' && i.isStringSelectMenu() && route.page === 'games') {
@@ -187,7 +189,10 @@ export class EventController {
         (!i.isModalSubmit() || i.isFromMessage())
       )
         await i.deferUpdate();
-      else await i.deferReply({ flags: MessageFlags.Ephemeral });
+      else {
+        const response = await i.deferReply({ flags: MessageFlags.Ephemeral, withResponse: true });
+        reply.bind(response?.interaction?.responseMessageId);
+      }
       this.log.debug({ event: 'event_interaction_acknowledged', ...context() });
       phase = 'authorize_fresh';
       actor = await this.gateway.actor(i.user.id);
@@ -295,6 +300,7 @@ export class EventController {
       } else throw new DomainError('invalidInput');
       await respond(this.views.admin(actor, language, route));
     } catch (error) {
+      outcome = 'failed';
       const failure = interactionFailure(error);
       this.log[failure.code === 'expired' ? 'debug' : failure.expected ? 'warn' : 'error']({
         event: 'event_interaction_error',
@@ -302,7 +308,7 @@ export class EventController {
         code: failure.code,
         err: error,
       });
-      if (attempted && !i.deferred && !i.replied) return;
+      if (!reply.current() || (attempted && !i.deferred && !i.replied)) return;
       if (
         error &&
         typeof error === 'object' &&
@@ -327,6 +333,14 @@ export class EventController {
       } catch (err) {
         this.log.warn({ event: 'event_error_response_failed', interactionId: i.id, err });
       }
+    } finally {
+      recordInteraction(
+        this.log,
+        timingStartedAt,
+        { ...context(), surface: 'events' },
+        outcome,
+        !reply.current(),
+      );
     }
   }
 }

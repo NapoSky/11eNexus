@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   archiveCandidates,
+  blocksMemberCreation,
   ADMIN_RETENTION_MS,
   validateGameIdentity,
   DAY,
@@ -23,10 +24,25 @@ import {
   type Repository,
   type Scheduler,
   type World,
+  type Activity,
 } from './ports.js';
+import { eventRoleName } from '../domain/community-event.js';
 
 // Guards run inside the same application mutex as the mutation.
-export type MutationGuard = () => Promise<void>;
+export interface ReconciliationObservation {
+  world: World;
+  activities: Map<
+    string,
+    {
+      channelId: string | null;
+      activatedAt: number;
+      activity: Activity;
+      historyRead: boolean;
+      failed?: boolean;
+    }
+  >;
+}
+export type MutationGuard = (observation?: ReconciliationObservation) => Promise<void>;
 export interface PreparedGame {
   name: string;
   url: string;
@@ -41,6 +57,7 @@ export interface Policy {
   activeCategoryId: string;
   notificationCooldown: number;
   newGameRoleId: string;
+  reservedRoleIds?: string[];
 }
 interface NewGameAnnouncement {
   status: 'pending' | 'sending' | 'sent' | 'review';
@@ -50,6 +67,10 @@ interface NewGameAnnouncement {
 }
 export class Nexus {
   readonly mutex = new Mutex();
+  private readonly synchronization = new Mutex();
+  private readonly announcementQueue = new Mutex();
+  private readonly announcementDeliveries = new Map<string, Promise<void>>();
+  private readonly receivedActivity = new Map<string, number>();
   constructor(
     readonly repository: Repository,
     readonly community: Community,
@@ -61,6 +82,53 @@ export class Nexus {
   private now(): number {
     return this.clock.now();
   }
+  private async authorize(actor: Actor, admin = false): Promise<Actor> {
+    const fresh = await this.community.authorize(actor);
+    if (fresh.id !== actor.id) throw new DomainError('forbidden');
+    if (admin) requireAdmin(fresh);
+    else requireMember(fresh);
+    return fresh;
+  }
+  assertRepairResources(
+    channelId: string | null,
+    roleId: string | null,
+    roleName?: string,
+    topic?: string | null,
+  ): void {
+    const events = this.repository.events();
+    const unresolved = new Set(
+      this.repository
+        .eventOperations()
+        .filter((op) => op.status !== 'completed' && op.attempted.includes('role'))
+        .map((op) => op.eventId),
+    );
+    if (
+      topic?.startsWith('11eNexus:event:') ||
+      (roleId &&
+        [this.policy.newGameRoleId, ...(this.policy.reservedRoleIds || [])].includes(roleId)) ||
+      events.some(
+        (event) =>
+          (channelId && event.channelId === channelId) ||
+          (roleId && event.roleId === roleId) ||
+          (!event.roleId &&
+            roleName &&
+            unresolved.has(event.id) &&
+            eventRoleName(event) === roleName),
+      )
+    )
+      throw new DomainError('repairReservedResource');
+  }
+  observedGame(game: Game): Game {
+    const observed = { ...game };
+    this.mergeActivity(observed);
+    return observed;
+  }
+  private mergeActivity(game: Game, activity?: Activity): void {
+    const received = game.channelId ? this.receivedActivity.get(game.channelId) : undefined;
+    const at = Math.max(activity?.at ?? 0, received ?? 0, game.lastActivityAt ?? 0);
+    if (at > 0) game.lastActivityAt = at;
+    if (at >= game.activatedAt && at > 0) game.awaitingActivity = false;
+  }
   private queueNewGameAnnouncement(game: Game): void {
     const key = `new-game-announcement:${game.id}`;
     if (!this.repository.get(key))
@@ -69,37 +137,60 @@ export class Nexus {
         createdAt: this.now(),
       } satisfies NewGameAnnouncement);
   }
-  private async deliverNewGameAnnouncement(game: Game): Promise<void> {
-    const key = `new-game-announcement:${game.id}`;
-    const item = this.repository.get<NewGameAnnouncement>(key);
-    if (!item || item.status === 'sent' || item.status === 'review') return;
-    // A process may have stopped after Discord accepted the message. Never replay
-    // an uncertain send, even if the message was subsequently deleted manually.
-    if (item.status === 'sending' || game.blocked || game.retired || game.state !== 'active') {
-      this.repository.set(key, { ...item, status: 'review' });
-      await this.community.alert(`announcement:${game.id}`, 'newGameAnnouncementNeedsReview', {
+  private deliverNewGameAnnouncement(id: string): Promise<void> {
+    const existing = this.announcementDeliveries.get(id);
+    if (existing) return existing;
+    const task = this.announcementQueue.run(() => this.sendNewGameAnnouncement(id));
+    this.announcementDeliveries.set(id, task);
+    const finished = () => this.announcementDeliveries.delete(id);
+    void task.then(finished, finished);
+    return task;
+  }
+  private async sendNewGameAnnouncement(id: string): Promise<void> {
+    const key = `new-game-announcement:${id}`;
+    const claim = await this.mutex.run(async () => {
+      const game = this.repository.game(id);
+      const item = this.repository.get<NewGameAnnouncement>(key);
+      if (!game || !item || item.status === 'sent' || item.status === 'review') return;
+      const review =
+        item.status === 'sending' || game.blocked || game.retired || game.state !== 'active';
+      // Claim before network I/O. A persisted 'sending' without a live task is uncertain.
+      this.repository.set(key, { ...item, status: review ? 'review' : 'sending' });
+      return { game, item, review };
+    });
+    if (!claim) return;
+    const { game, item } = claim;
+    const review = async () => {
+      await this.mutex.run(async () => this.repository.set(key, { ...item, status: 'review' }));
+      await this.community.alert(`announcement:${id}`, 'newGameAnnouncementNeedsReview', {
+        game: game.name,
+      });
+    };
+    if (claim.review) {
+      await this.community.alert(`announcement:${id}`, 'newGameAnnouncementNeedsReview', {
         game: game.name,
       });
       return;
     }
-    this.repository.set(key, { ...item, status: 'sending' });
     try {
       const messageId = await this.community.announceNewGame(game);
-      this.repository.set(key, { ...item, status: 'sent', sentAt: this.now(), messageId });
+      await this.mutex.run(async () =>
+        this.repository.set(key, { ...item, status: 'sent', sentAt: this.now(), messageId }),
+      );
     } catch {
-      this.repository.set(key, { ...item, status: 'review' });
-      await this.community.alert(`announcement:${game.id}`, 'newGameAnnouncementNeedsReview', {
-        game: game.name,
-      });
+      await review();
     }
   }
-  async deliverNewGameAnnouncements(): Promise<void> {
-    await this.mutex.run(async () => {
-      for (const game of this.repository.games(true)) {
-        await this.scheduler.yield();
-        await this.deliverNewGameAnnouncement(game);
-      }
-    });
+  async deliverNewGameAnnouncements(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    for (const game of this.repository.games(true)) {
+      const item = this.repository.get<NewGameAnnouncement>(`new-game-announcement:${game.id}`);
+      if (!item || item.status === 'sent' || item.status === 'review') continue;
+      signal?.throwIfAborted();
+      await this.scheduler.yield();
+      signal?.throwIfAborted();
+      await this.deliverNewGameAnnouncement(game.id);
+    }
   }
   private game(id: string): Game {
     const game = this.repository.game(id);
@@ -115,11 +206,7 @@ export class Nexus {
     if (
       this.repository
         .operations()
-        .some(
-          (o) =>
-            o.actorId === actorId &&
-            (o.status === 'pending' || (o.status === 'review' && o.startedAt + DAY > this.now())),
-        )
+        .some((operation) => blocksMemberCreation(operation, actorId, this.now()))
     )
       throw new DomainError('inProgress');
   }
@@ -178,6 +265,11 @@ export class Nexus {
         .sort((a, b) => (a.lastActivityAt ?? a.activatedAt) - (b.lastActivityAt ?? b.activatedAt))
         .find((g) => {
           const r = world.roles.find((r) => r.id === g.roleId);
+          try {
+            this.assertRepairResources(g.channelId, g.roleId, r?.name);
+          } catch {
+            return false;
+          }
           return r?.editable && !r.managed && r.permissions === '0' && r.references.length === 0;
         });
       if (!recyclable) return this.full();
@@ -189,23 +281,40 @@ export class Nexus {
     }
     return world;
   }
-  async create(actor: Actor, rawgId: number, guard?: MutationGuard): Promise<Game> {
+  async create(
+    actor: Actor,
+    rawgId: number,
+    guard?: MutationGuard,
+    preview?: { candidate: import('../domain/model.js').Candidate; assetId: string },
+  ): Promise<Game> {
     requireMember(actor);
-    return this.mutex.run(async () => {
+    const existing = this.repository.byRawg(rawgId);
+    // Provider reads and image conversion never occupy the application mutation queue.
+    if (!existing && !actor.admin) this.quota(actor.id);
+    const candidate = existing
+      ? undefined
+      : preview?.candidate || (await this.catalogue.get(rawgId));
+    if (preview && preview.candidate.id !== rawgId) throw new DomainError('invalidInput');
+    const asset = existing
+      ? null
+      : preview
+        ? this.repository.asset(preview.assetId)
+        : await this.catalogue.image(candidate!);
+    const game = await this.mutex.run(async () => {
+      actor = await this.authorize(actor);
       await guard?.();
-      const existing = this.repository.byRawg(rawgId);
-      if (existing) {
-        if (existing.retired) throw new DomainError('blocked');
-        if (existing.blocked || existing.state === 'unavailable')
-          throw new DomainError('partial', { game: existing.name });
-        return existing;
+      const current = this.repository.byRawg(rawgId);
+      if (current) {
+        if (current.retired) throw new DomainError('blocked');
+        if (current.blocked || current.state === 'unavailable')
+          throw new DomainError('partial', { game: current.name });
+        return current;
       }
-      if (!actor.admin) this.quota(actor.id);
-      const candidate = await this.catalogue.get(rawgId);
-      const asset = await this.catalogue.image(candidate);
-      if (!asset) throw new DomainError('needsReview');
+      if (!candidate || !asset) throw new DomainError('needsReview');
       return this.createInternal(actor, candidate.name, rawgId, candidate.url, asset);
     });
+    await this.deliverNewGameAnnouncement(game.id);
+    return game;
   }
   private async createInternal(
     actor: Actor,
@@ -275,12 +384,12 @@ export class Nexus {
       await this.community.alert(`partial:${op.id}`, 'partial', { game: game.name });
       throw new DomainError('partial', { game: game.name });
     }
-    await this.deliverNewGameAnnouncement(game);
     return game;
   }
   async activate(actor: Actor, id: string, guard?: MutationGuard): Promise<Game> {
     requireMember(actor);
     return this.mutex.run(async () => {
+      actor = await this.authorize(actor);
       await guard?.();
       const game = this.game(id);
       this.requireSettled(id);
@@ -333,11 +442,12 @@ export class Nexus {
   async setNewGameAlerts(actor: Actor, enabled: boolean): Promise<boolean> {
     requireMember(actor);
     return this.mutex.run(async () => {
+      actor = await this.authorize(actor);
       const roleId = this.policy.newGameRoleId;
       if (this.repository.games(true).some((game) => game.roleId === roleId))
         throw new DomainError('newGameAlertsUnavailable');
       if ((await this.community.subscription(roleId, actor.id)) !== enabled)
-        await this.community.setSubscription(roleId, actor.id, enabled);
+        await this.community.setSubscription(roleId, actor.id, enabled, true);
       const actual = await this.community.subscription(roleId, actor.id);
       if (actual !== enabled) throw new DomainError('newGameAlertsUnavailable');
       this.repository.audit('new-game-alerts', actor.id, enabled ? 'on' : 'off', this.now());
@@ -347,7 +457,9 @@ export class Nexus {
   async subscribe(actor: Actor, id: string, enabled: boolean): Promise<boolean> {
     requireMember(actor);
     return this.mutex.run(async () => {
+      actor = await this.authorize(actor);
       const game = this.game(id);
+      this.assertRepairResources(game.channelId, game.roleId);
       this.requireSettled(id);
       if (game.blocked) throw new DomainError('blocked');
       if (game.roleState === 'recycled') {
@@ -355,7 +467,7 @@ export class Nexus {
         return enabled;
       }
       if (game.roleState !== 'present' || !game.roleId) throw new DomainError('needsReview');
-      await this.community.setSubscription(game.roleId, actor.id, enabled);
+      await this.community.setSubscription(game.roleId, actor.id, enabled, true);
       const actual = await this.community.subscription(game.roleId, actor.id);
       this.repository.subscribe(id, actor.id, actual);
       if (actual !== enabled) throw new DomainError('discordError');
@@ -397,6 +509,7 @@ export class Nexus {
   async propose(actor: Actor, name: string, url: string, locale: Locale): Promise<Proposal> {
     requireMember(actor);
     return this.mutex.run(async () => {
+      actor = await this.authorize(actor);
       const validatedUrl = this.validateIdentity(name, url);
       const pending = this.repository
         .proposals()
@@ -448,6 +561,7 @@ export class Nexus {
   ): Promise<Game> {
     requireAdmin(admin);
     return this.mutex.run(async () => {
+      admin = await this.authorize(admin, true);
       const proposal = this.repository.proposal(id);
       if (proposal?.status !== 'pending' || proposal.actorId !== requester.id)
         throw new DomainError('notFound');
@@ -474,6 +588,7 @@ export class Nexus {
   async reject(admin: Actor, id: string, reason: string, guard?: MutationGuard): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      admin = await this.authorize(admin, true);
       await guard?.();
       const proposal = this.repository.proposal(id);
       if (
@@ -492,6 +607,7 @@ export class Nexus {
   async clarify(admin: Actor, id: string, reason: string, guard?: MutationGuard): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      admin = await this.authorize(admin, true);
       await guard?.();
       const p = this.repository.proposal(id);
       if (
@@ -510,6 +626,7 @@ export class Nexus {
   async amendProposal(actor: Actor, id: string, name: string, url: string): Promise<Proposal> {
     requireMember(actor);
     return this.mutex.run(async () => {
+      actor = await this.authorize(actor);
       const p = this.repository.proposal(id);
       if (!p || p.actorId !== actor.id) throw new DomainError('forbidden');
       if (p.status !== 'needs_info') throw new DomainError('invalidInput');
@@ -541,6 +658,7 @@ export class Nexus {
     requireMember(actor);
     if (!message.trim() || message.length > 1000) throw new DomainError('invalidInput');
     return this.mutex.run(async () => {
+      actor = await this.authorize(actor);
       const game = this.game(id);
       if (game.state !== 'active' || game.blocked || game.roleState !== 'present')
         throw new DomainError('blocked');
@@ -556,6 +674,7 @@ export class Nexus {
   async block(admin: Actor, id: string, enabled: boolean, guard?: MutationGuard): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      admin = await this.authorize(admin, true);
       await guard?.();
       const g = this.game(id);
       if (!enabled) this.requireSettled(id);
@@ -567,6 +686,7 @@ export class Nexus {
   async retire(admin: Actor, id: string, guard?: MutationGuard): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      admin = await this.authorize(admin, true);
       await guard?.();
       const g = this.game(id);
       this.requireSettled(id);
@@ -587,6 +707,7 @@ export class Nexus {
   ): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      admin = await this.authorize(admin, true);
       await guard?.();
       if (
         !name.trim() ||
@@ -633,12 +754,14 @@ export class Nexus {
   ): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      admin = await this.authorize(admin, true);
       await guard?.();
       const game = this.game(id);
       const world = await this.community.snapshot();
       if (!world.complete) throw new DomainError('incomplete');
       const channel = world.channels.find((c) => c.id === channelId);
       const role = world.roles.find((r) => r.id === roleId);
+      this.assertRepairResources(channelId, roleId, role?.name, channel?.topic);
       if (
         !channel ||
         ![0, 5, 15, 16].includes(channel.type) ||
@@ -689,7 +812,8 @@ export class Nexus {
     requester?: Actor,
   ): Promise<Game> {
     requireAdmin(admin);
-    return this.mutex.run(async () => {
+    const game = await this.mutex.run(async () => {
+      admin = await this.authorize(admin, true);
       await guard?.();
       const p = proposalId ? this.repository.proposal(proposalId) : undefined;
       if (
@@ -724,6 +848,8 @@ export class Nexus {
       }
       return game;
     });
+    await this.deliverNewGameAnnouncement(game.id);
+    return game;
   }
   async attachProposal(
     admin: Actor,
@@ -733,6 +859,7 @@ export class Nexus {
   ): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      admin = await this.authorize(admin, true);
       await guard?.();
       const p = this.repository.proposal(proposalId);
       const game = this.game(gameId);
@@ -749,6 +876,7 @@ export class Nexus {
   async archive(admin: Actor, id: string, guard?: MutationGuard): Promise<void> {
     requireAdmin(admin);
     await this.mutex.run(async () => {
+      admin = await this.authorize(admin, true);
       await guard?.();
       const game = this.game(id);
       this.requireSettled(id);
@@ -769,6 +897,7 @@ export class Nexus {
     });
   }
   private async recycleInternal(game: Game, world: World): Promise<void> {
+    this.assertRepairResources(game.channelId, game.roleId);
     const role = world.roles.find((r) => r.id === game.roleId);
     if (
       !role ||
@@ -795,169 +924,264 @@ export class Nexus {
     }
   }
   async recordActivity(channelId: string, at: number): Promise<void> {
+    if (!this.repository.games().some((g) => g.channelId === channelId)) return;
+    this.receivedActivity.set(channelId, Math.max(at, this.receivedActivity.get(channelId) ?? 0));
     await this.mutex.run(async () => {
       const game = this.repository.games().find((g) => g.channelId === channelId);
       if (!game) return;
-      if (at > (game.lastActivityAt ?? 0)) game.lastActivityAt = at;
-      if (at >= game.activatedAt) game.awaitingActivity = false;
+      this.mergeActivity(game);
       this.repository.saveGame(game);
+      if ((this.receivedActivity.get(channelId) ?? 0) <= (game.lastActivityAt ?? 0))
+        this.receivedActivity.delete(channelId);
     });
   }
-  async synchronize(rotate = true, guard?: MutationGuard, admin?: Actor): Promise<void> {
-    return this.mutex.run(async () => {
-      if (admin) requireAdmin(admin);
-      await guard?.();
-      const adoption = this.repository.get<{ status: string }>('archiveAdoption');
-      if (adoption && adoption.status !== 'completed') throw new DomainError('needsReview');
-      const world = await this.community.snapshot();
-      if (!world.complete) throw new DomainError('incomplete');
-      // Recover resources created just before a crash, but do not recreate deleted resources.
-      for (const op of this.repository
+  async synchronize(
+    rotate = true,
+    guard?: MutationGuard,
+    admin?: Actor,
+    archiveIds?: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<void> {
+    signal?.throwIfAborted();
+    if (admin) requireAdmin(admin);
+    return this.synchronization.run(async () => {
+      signal?.throwIfAborted();
+      const activities: ReconciliationObservation['activities'] = new Map();
+      const recovering = this.repository
         .operations()
-        .filter((o) => o.status === 'pending' || o.status === 'review')) {
-        await this.scheduler.yield();
-        const game = this.repository.game(op.gameId);
-        if (!game) continue;
-        if (op.kind === 'create') {
-          const channels = world.channels.filter((c) => c.topic?.includes(`11eNexus:${game.id}`));
-          if (!game.channelId && channels.length === 1) game.channelId = channels[0]!.id;
-        }
-        if (
-          (op.kind === 'create' ||
-            op.kind === 'activate' ||
-            (op.kind === 'import' && op.data.createRole === true)) &&
-          !world.roles.some((r) => r.id === game.roleId)
-        ) {
-          const baseline = Array.isArray(op.data.previousRoleIds) ? op.data.previousRoleIds : [];
-          const roles = world.roles.filter(
-            (r) =>
-              !baseline.includes(r.id) &&
-              !r.managed &&
-              r.permissions === '0' &&
-              r.name === op.data.roleName &&
-              r.editable,
-          );
-          if (roles.length === 1) {
-            game.roleId = roles[0]!.id;
-            game.roleState = 'present';
-          }
-        }
-        this.repository.saveGame(game);
-        const channel = world.channels.find((c) => c.id === game.channelId);
-        const role = world.roles.find((r) => r.id === game.roleId);
-        // A recorded failure can leave permissions half-applied even when the parent looks correct.
-        // Only an explicit repair releases that game; mere observations cannot prove ACL completion.
-        if (op.status === 'review' && op.kind !== 'recycle') {
-          game.blocked = true;
-          this.repository.saveGame(game);
-          continue;
-        }
-        const complete =
-          op.kind === 'create'
-            ? Boolean(channel?.parentId === this.policy.activeCategoryId && role)
-            : op.kind === 'archive'
-              ? Boolean(channel?.parentId && world.archiveCategoryIds.includes(channel.parentId))
-              : op.kind === 'import' || op.kind === 'activate'
-                ? false
-                : !role;
-        if (complete) {
-          this.repository.transaction(() => {
-            if (op.kind === 'create') {
-              game.state = 'active';
-              game.activatedAt = op.startedAt;
-              game.addedAt ??= op.startedAt;
-              game.awaitingActivity = true;
-              this.repository.saveGame(game);
-              if (op.data.announceNewGame === true) this.queueNewGameAnnouncement(game);
-            }
-            this.finish(op, 'completed');
-            if (op.actorId && op.data.administrative !== true)
-              this.repository.setCooldown(
-                op.actorId,
-                Math.max(this.repository.cooldown(op.actorId) || 0, op.startedAt),
-              );
-          });
-        } else {
-          this.finish(op, 'review', op.error || 'interrupted');
-          game.blocked = true;
-          this.repository.saveGame(game);
-        }
-      }
-      const trusted = new Set<string>();
+        .filter((op) => op.kind === 'create' && op.status === 'pending');
       for (const game of this.repository.games()) {
-        // Let Gateway interaction callbacks run between background reconciliation items.
+        signal?.throwIfAborted();
         await this.scheduler.yield();
-        const channel = world.channels.find((c) => c.id === game.channelId);
-        if (!channel) {
-          game.state = 'unavailable';
-          this.repository.saveGame(game);
-          continue;
-        }
-        const before = game.state;
-        if (channel.parentId === this.policy.activeCategoryId) game.state = 'active';
-        else if (channel.parentId && world.archiveCategoryIds.includes(channel.parentId))
-          game.state = 'archived';
-        else game.state = 'unavailable';
-        if (game.state === 'active' && before !== 'active') {
-          game.activatedAt = this.now();
+        signal?.throwIfAborted();
+        const creation = recovering.find((op) => op.gameId === game.id);
+        if (creation) {
+          game.activatedAt = creation.startedAt;
           game.awaitingActivity = true;
-        }
-        const role = world.roles.find((r) => r.id === game.roleId);
-        if (role) {
-          game.roleState = 'present';
-          this.repository.replaceSubscribers(
-            game.id,
-            role.members.filter((id) => world.memberIds.includes(id)),
-          );
-        } else if (game.roleState !== 'recycled') {
-          game.roleState = 'missing';
-          this.repository.replaceSubscribers(game.id, []);
-        } else
-          for (const id of this.repository.subscribers(game.id))
-            if (!world.memberIds.includes(id)) this.repository.subscribe(game.id, id, false);
-        if (game.state === 'active') {
-          try {
-            const observation = await this.community.activity(game, this.now() - 30 * DAY);
-            if (observation.at && observation.at > (game.lastActivityAt ?? 0))
-              game.lastActivityAt = observation.at;
-            if (observation.at && observation.at >= game.activatedAt) game.awaitingActivity = false;
-            if (observation.complete) trusted.add(game.id);
-          } catch {
-            await this.community.alert(`activity:${game.id}`, 'activityUnavailable', {
-              game: game.name,
-            });
+          if (!game.channelId) {
+            const recoveryWorld = await this.community.snapshot(signal);
+            if (!recoveryWorld.complete) throw new DomainError('incomplete');
+            const matches = recoveryWorld.channels.filter((c) =>
+              c.topic?.includes(`11eNexus:${game.id}`),
+            );
+            if (matches.length === 1) game.channelId = matches[0]!.id;
           }
         }
-        this.repository.saveGame(game);
-      }
-      this.repository.set('lastReconciliation', { at: this.now(), rotation: rotate });
-      if (admin)
-        this.repository.audit(
-          rotate ? 'admin-rotation' : 'admin-reconciliation',
-          admin.id,
-          'guild',
-          this.now(),
-        );
-      if (!rotate) return;
-      for (const game of archiveCandidates(
-        this.repository.games(),
-        this.now(),
-        this.policy.minActive,
-      ).filter((g) => trusted.has(g.id))) {
-        const op = this.operation('archive', game, null);
-        try {
-          await this.community.move(game, true, op.id);
-          game.state = 'archived';
-          this.repository.saveGame(game);
-          this.finish(op, 'completed');
-          this.repository.audit('archive', null, game.id, this.now());
-        } catch {
-          game.blocked = true;
-          this.repository.saveGame(game);
-          this.finish(op, 'review', 'capacity');
-          await this.community.alert(`archive:${game.id}`, 'capacityAlert', { game: game.name });
+        if (game.state !== 'active' && !creation) continue;
+        // A recent established human message proves archival cannot be due.
+        // Provisional and recovered creations still need their human-history check.
+        this.mergeActivity(game);
+        const needsHistory =
+          game.awaitingActivity ||
+          archiveCandidates([{ ...game, state: 'active' }], this.now(), 0).length > 0;
+        let activity: Activity = { at: game.lastActivityAt, complete: true },
+          failed = false;
+        if (needsHistory) {
+          try {
+            activity = await this.community.activity(game, this.now() - 30 * DAY, signal);
+          } catch {
+            signal?.throwIfAborted();
+            activity = { at: null, complete: false };
+            failed = true;
+          }
         }
+        activities.set(game.id, {
+          channelId: game.channelId,
+          activatedAt: game.activatedAt,
+          activity,
+          historyRead: needsHistory,
+          failed,
+        });
       }
+      // Observe resources after the potentially long histories, so manual moves and
+      // subscription changes during the scan win over our earlier catalogue view.
+      signal?.throwIfAborted();
+      const revision = this.mutex.revision;
+      let world = await this.community.snapshot(signal);
+      if (!world.complete) throw new DomainError('incomplete');
+      signal?.throwIfAborted();
+      return this.mutex.run(async () => {
+        signal?.throwIfAborted();
+        if (admin) admin = await this.authorize(admin, true);
+        // A mutation completed during the inventory or lock wait: refresh once
+        // under the lock rather than overwrite its newer role observation.
+        if (revision !== this.mutex.revision) world = await this.community.snapshot(signal);
+        if (!world.complete) throw new DomainError('incomplete');
+        await guard?.({ world, activities });
+        const adoption = this.repository.get<{ status: string }>('archiveAdoption');
+        if (adoption && adoption.status !== 'completed') throw new DomainError('needsReview');
+        // Recover resources created just before a crash, but do not recreate deleted resources.
+        for (const op of this.repository
+          .operations()
+          .filter((o) => o.status === 'pending' || o.status === 'review')) {
+          await this.scheduler.yield();
+          const game = this.repository.game(op.gameId);
+          if (!game) continue;
+          if (op.kind === 'create') {
+            const channels = world.channels.filter((c) => c.topic?.includes(`11eNexus:${game.id}`));
+            if (!game.channelId && channels.length === 1) game.channelId = channels[0]!.id;
+          }
+          if (
+            (op.kind === 'create' ||
+              op.kind === 'activate' ||
+              (op.kind === 'import' && op.data.createRole === true)) &&
+            !world.roles.some((r) => r.id === game.roleId)
+          ) {
+            const baseline = Array.isArray(op.data.previousRoleIds) ? op.data.previousRoleIds : [];
+            const roles = world.roles.filter(
+              (r) =>
+                !baseline.includes(r.id) &&
+                !r.managed &&
+                r.permissions === '0' &&
+                r.name === op.data.roleName &&
+                r.editable,
+            );
+            if (roles.length === 1) {
+              game.roleId = roles[0]!.id;
+              game.roleState = 'present';
+            }
+          }
+          this.repository.saveGame(game);
+          const channel = world.channels.find((c) => c.id === game.channelId);
+          const role = world.roles.find((r) => r.id === game.roleId);
+          // A recorded failure can leave permissions half-applied even when the parent looks correct.
+          // Only an explicit repair releases that game; mere observations cannot prove ACL completion.
+          if (op.status === 'review' && op.kind !== 'recycle') {
+            game.blocked = true;
+            this.repository.saveGame(game);
+            continue;
+          }
+          const complete =
+            op.kind === 'create'
+              ? Boolean(channel?.parentId === this.policy.activeCategoryId && role)
+              : op.kind === 'archive'
+                ? Boolean(channel?.parentId && world.archiveCategoryIds.includes(channel.parentId))
+                : op.kind === 'import' || op.kind === 'activate'
+                  ? false
+                  : !role;
+          if (complete) {
+            this.repository.transaction(() => {
+              if (op.kind === 'create') {
+                game.state = 'active';
+                game.activatedAt = op.startedAt;
+                game.addedAt ??= op.startedAt;
+                game.awaitingActivity = true;
+                this.repository.saveGame(game);
+                if (op.data.announceNewGame === true) this.queueNewGameAnnouncement(game);
+              }
+              this.finish(op, 'completed');
+              if (op.actorId && op.data.administrative !== true)
+                this.repository.setCooldown(
+                  op.actorId,
+                  Math.max(this.repository.cooldown(op.actorId) || 0, op.startedAt),
+                );
+            });
+          } else {
+            this.finish(op, 'review', op.error || 'interrupted');
+            game.blocked = true;
+            this.repository.saveGame(game);
+          }
+        }
+        const trusted = new Set<string>();
+        const activityAlerts: Game[] = [];
+        await this.scheduler.yield();
+        // One atomic commit for observed data. Otherwise every unchanged game
+        // incurs a separate synchronous disk commit while interactions wait.
+        this.repository.transaction(() => {
+          for (const game of this.repository.games()) {
+            const channel = world.channels.find((c) => c.id === game.channelId);
+            if (!channel) {
+              game.state = 'unavailable';
+              this.repository.saveGame(game);
+              continue;
+            }
+            const before = game.state;
+            if (channel.parentId === this.policy.activeCategoryId) game.state = 'active';
+            else if (channel.parentId && world.archiveCategoryIds.includes(channel.parentId))
+              game.state = 'archived';
+            else game.state = 'unavailable';
+            if (game.state === 'active' && before !== 'active') {
+              game.activatedAt = this.now();
+              game.awaitingActivity = true;
+            }
+            const role = world.roles.find((r) => r.id === game.roleId);
+            if (role) {
+              game.roleState = 'present';
+              this.repository.replaceSubscribers(
+                game.id,
+                role.members.filter((id) => world.memberIds.includes(id)),
+              );
+            } else if (game.roleState !== 'recycled') {
+              game.roleState = 'missing';
+              this.repository.replaceSubscribers(game.id, []);
+            } else
+              for (const id of this.repository.subscribers(game.id))
+                if (!world.memberIds.includes(id)) this.repository.subscribe(game.id, id, false);
+            if (game.state === 'active') {
+              const observation = activities.get(game.id);
+              if (
+                observation?.channelId === game.channelId &&
+                observation.activatedAt === game.activatedAt
+              ) {
+                this.mergeActivity(game, observation.activity);
+                if (observation.activity.complete && observation.historyRead) trusted.add(game.id);
+                if (observation.failed) activityAlerts.push(game);
+              } else this.mergeActivity(game);
+            }
+            this.repository.saveGame(game);
+          }
+          this.repository.set('lastReconciliation', { at: this.now(), rotation: rotate });
+        });
+        for (const game of activityAlerts)
+          await this.community.alert(`activity:${game.id}`, 'activityUnavailable', {
+            game: game.name,
+          });
+        if (admin)
+          this.repository.audit(
+            rotate ? 'admin-rotation' : 'admin-reconciliation',
+            admin.id,
+            'guild',
+            this.now(),
+          );
+        if (!rotate) return;
+        for (const game of archiveCandidates(
+          this.repository.games().map((g) => {
+            this.mergeActivity(g);
+            return g;
+          }),
+          this.now(),
+          this.policy.minActive,
+        ).filter((g) => trusted.has(g.id) && (!archiveIds || archiveIds.includes(g.id)))) {
+          const op = this.operation('archive', game, null);
+          try {
+            await this.community.move(game, true, op.id, () => {
+              const games = this.repository.games().map((g) => {
+                this.mergeActivity(g);
+                return g;
+              });
+              return archiveCandidates(games, this.now(), this.policy.minActive).some(
+                (g) => g.id === game.id,
+              );
+            });
+            this.mergeActivity(game);
+            game.state = 'archived';
+            this.repository.saveGame(game);
+            this.finish(op, 'completed');
+            this.repository.audit('archive', null, game.id, this.now());
+          } catch (error) {
+            if (error instanceof DomainError && error.code === 'activityChanged') {
+              this.mergeActivity(game);
+              this.repository.saveGame(game);
+              this.finish(op, 'failed', 'activityChanged');
+              continue;
+            }
+            game.blocked = true;
+            this.repository.saveGame(game);
+            this.finish(op, 'review', 'capacity');
+            await this.community.alert(`archive:${game.id}`, 'capacityAlert', { game: game.name });
+          }
+        }
+      });
     });
   }
 }

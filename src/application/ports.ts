@@ -1,4 +1,4 @@
-import type { Asset, Candidate, Game, Operation, Proposal } from '../domain/model.js';
+import type { Actor, Asset, Candidate, Game, Operation, Proposal } from '../domain/model.js';
 import type { CommunityEvent, EventOperation } from '../domain/community-event.js';
 export interface Session {
   id: string;
@@ -71,14 +71,25 @@ export interface Activity {
   complete: boolean;
 }
 export interface Community {
+  authorize(actor: Actor): Promise<Actor>;
   snapshot(signal?: AbortSignal): Promise<World>;
   activity(game: Game, since: number, signal?: AbortSignal): Promise<Activity>;
   createChannel(game: Game, operationId: string): Promise<string>;
   createRole(game: Game, asset: Asset | null, operationId: string): Promise<string>;
-  move(game: Game, archive: boolean, operationId: string): Promise<void>;
+  move(
+    game: Game,
+    archive: boolean,
+    operationId: string,
+    stillCurrent?: () => boolean,
+  ): Promise<void>;
   repairResources(game: Game): Promise<void>;
   renameGame(game: Game, name: string, operationId: string): Promise<void>;
-  setSubscription(roleId: string, memberId: string, enabled: boolean): Promise<void>;
+  setSubscription(
+    roleId: string,
+    memberId: string,
+    enabled: boolean,
+    selfService?: boolean,
+  ): Promise<void>;
   subscription(roleId: string, memberId: string): Promise<boolean>;
   deleteRole(roleId: string, operationId: string): Promise<void>;
   notify(game: Game, actorId: string, message: string): Promise<void>;
@@ -88,7 +99,7 @@ export interface Community {
 export interface Catalogue {
   search(query: string): Promise<Candidate[]>;
   get(id: number): Promise<Candidate>;
-  image(candidate: Candidate): Promise<Asset | null>;
+  image(candidate: Candidate, signal?: AbortSignal): Promise<Asset | null>;
 }
 export interface Clock {
   now(): number;
@@ -98,6 +109,10 @@ export interface Scheduler {
 }
 export class Mutex {
   private tail: Promise<void> = Promise.resolve();
+  private completed = 0;
+  get revision(): number {
+    return this.completed;
+  }
   async run<T>(task: () => Promise<T>): Promise<T> {
     const previous = this.tail;
     let release!: () => void;
@@ -108,6 +123,7 @@ export class Mutex {
     try {
       return await task();
     } finally {
+      this.completed++;
       release();
     }
   }

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Nexus } from '../src/application/nexus.js';
 import type { MigrationCommunity } from '../src/application/migration.js';
 import type { Activity, Catalogue, World } from '../src/application/ports.js';
-import { DAY, type Actor, type Asset, type Game } from '../src/domain/model.js';
+import { DAY, DomainError, type Actor, type Asset, type Game } from '../src/domain/model.js';
 import { Store } from '../src/infrastructure/store.js';
 
 export const member: Actor = { id: '100000000000000001', member: true, admin: false };
@@ -41,6 +41,7 @@ export function game(overrides: Partial<Game> = {}): Game {
   };
 }
 export class FakeCommunity implements MigrationCommunity {
+  authorize = jest.fn(async (actor: Actor) => actor);
   world: World = {
     channels: [
       { id: activeId, name: 'Active', parentId: null, type: 4, topic: null },
@@ -82,11 +83,14 @@ export class FakeCommunity implements MigrationCommunity {
     });
     return id;
   });
-  move = jest.fn(async (g: Game, archive: boolean) => {
-    const channel = this.world.channels.find((c) => c.id === g.channelId);
-    if (!channel) throw new Error('Missing channel');
-    channel.parentId = archive ? archiveId : activeId;
-  });
+  move = jest.fn(
+    async (g: Game, archive: boolean, _operationId?: string, stillCurrent?: () => boolean) => {
+      if (stillCurrent && !stillCurrent()) throw new DomainError('activityChanged');
+      const channel = this.world.channels.find((c) => c.id === g.channelId);
+      if (!channel) throw new Error('Missing channel');
+      channel.parentId = archive ? archiveId : activeId;
+    },
+  );
   repairResources = jest.fn(async () => {});
   renameGame = jest.fn(async (g: Game, name: string) => {
     const channel = this.world.channels.find((c) => c.id === g.channelId);
@@ -95,12 +99,14 @@ export class FakeCommunity implements MigrationCommunity {
     channel.name = name;
     role.name = name;
   });
-  setSubscription = jest.fn(async (roleId: string, userId: string, enabled: boolean) => {
-    const role = this.world.roles.find((r) => r.id === roleId);
-    if (!role) throw new Error('Missing role');
-    role.members = role.members.filter((id) => id !== userId);
-    if (enabled) role.members.push(userId);
-  });
+  setSubscription = jest.fn(
+    async (roleId: string, userId: string, enabled: boolean, _selfService?: boolean) => {
+      const role = this.world.roles.find((r) => r.id === roleId);
+      if (!role) throw new Error('Missing role');
+      role.members = role.members.filter((id) => id !== userId);
+      if (enabled) role.members.push(userId);
+    },
+  );
   subscription = jest.fn(async (roleId: string, userId: string) =>
     Boolean(this.world.roles.find((r) => r.id === roleId)?.members.includes(userId)),
   );

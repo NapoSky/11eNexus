@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
+import { requireNode26 } from './infrastructure/node-version.js';
 try {
+  requireNode26();
   const health = JSON.parse(
     readFileSync(process.env.HEALTH_PATH || './data/health.json', 'utf8'),
   ) as { ready: boolean; at: number };
