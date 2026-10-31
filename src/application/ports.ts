@@ -1,4 +1,5 @@
 import type { Asset, Candidate, Game, Operation, Proposal } from '../domain/model.js';
+import type { CommunityEvent, EventOperation } from '../domain/community-event.js';
 export interface Session {
   id: string;
   userId: string;
@@ -7,6 +8,11 @@ export interface Session {
   expiresAt: number;
 }
 export interface Repository {
+  events(): CommunityEvent[];
+  event(id: string): CommunityEvent | undefined;
+  saveEvent(event: CommunityEvent): void;
+  eventOperations(): EventOperation[];
+  saveEventOperation(operation: EventOperation): void;
   transaction<T>(task: () => T): T;
   games(includeRetired?: boolean): Game[];
   game(id: string): Game | undefined;

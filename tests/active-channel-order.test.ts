@@ -68,6 +68,27 @@ function listener(sort = jest.fn(async () => {})) {
   return { events, order, sort, warn };
 }
 afterEach(() => jest.useRealTimers());
+test('event ordering follows the category created after the runtime listener was installed', async () => {
+  jest.useFakeTimers();
+  const events = new EventEmitter(),
+    sort = jest.fn(async () => {});
+  let categoryId: string | null = null;
+  const order = new ActiveChannelOrder(
+    events as unknown as Client,
+    'guild',
+    () => categoryId,
+    sort,
+  );
+  order.listen();
+  events.emit(Events.ChannelCreate, channel('1', 'Zulu', 1, 0, 'event-active'));
+  await jest.advanceTimersByTimeAsync(2000);
+  expect(sort).not.toHaveBeenCalled();
+  categoryId = 'event-active';
+  events.emit(Events.ChannelCreate, channel('1', 'Zulu', 1, 0, 'event-active'));
+  await jest.advanceTimersByTimeAsync(2000);
+  expect(sort).toHaveBeenCalledTimes(1);
+  await order.stop();
+});
 
 test('bursts of creation, rename, moves and deletion coalesce; unrelated updates are ignored', async () => {
   jest.useFakeTimers();

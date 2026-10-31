@@ -22,6 +22,9 @@ import type { Nexus } from '../application/nexus.js';
 import type { Session } from '../application/ports.js';
 import type { DiscordCommunity } from '../infrastructure/discord.js';
 import { AdminController } from './admin-controller.js';
+import { EventController } from './event-controller.js';
+import { EventService } from '../application/events.js';
+import { DiscordEvents } from '../infrastructure/discord-events.js';
 import { commands } from './commands.js';
 import { locale, translator } from './i18n.js';
 import {
@@ -90,13 +93,26 @@ const string = (s: Session, key: string): string => {
 export class Controller {
   readonly views: Views;
   readonly administration: AdminController;
+  readonly events: EventService;
+  readonly eventController: EventController;
   private readonly pending = new Set<Promise<void>>();
   constructor(
     readonly nexus: Nexus,
     readonly gateway: DiscordCommunity,
     private readonly log: AppLogger = logger.child({ component: 'interactions' }),
+    events?: EventService,
   ) {
     this.views = new Views(nexus.repository, gateway.config.guildId);
+    this.events =
+      events ||
+      new EventService(
+        nexus.repository,
+        new DiscordEvents(gateway),
+        nexus.mutex,
+        gateway.config.activeCategoryId,
+        gateway.config.roleReserve,
+      );
+    this.eventController = new EventController(this.events, gateway, (i) => this.actor(i), log);
     this.administration = new AdminController(
       nexus,
       gateway,
@@ -201,6 +217,12 @@ export class Controller {
     await (await this.gateway.guild()).commands.set(commands());
   }
   async handle(interaction: Interaction): Promise<void> {
+    if (this.eventController.accepts(interaction)) {
+      this.administration.invalidateReply(interaction);
+      await this.eventController.handle(interaction);
+      return;
+    }
+    this.eventController.invalidateReply(interaction);
     if (this.administration.accepts(interaction)) {
       await this.administration.handle(interaction);
       return;

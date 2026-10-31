@@ -10,6 +10,7 @@ import {
   type Proposal,
 } from '../domain/model.js';
 import type { Repository, Session } from '../application/ports.js';
+import type { CommunityEvent, EventOperation } from '../domain/community-event.js';
 
 export class Store implements Repository {
   readonly db: DatabaseSync;
@@ -21,7 +22,7 @@ export class Store implements Repository {
     this.db.exec(
       'CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, sha256 TEXT NOT NULL)',
     );
-    for (const name of ['001-initial', '002-game-added-dates']) {
+    for (const name of ['001-initial', '002-game-added-dates', '003-events']) {
       const id = name.slice(0, 3);
       const sql = readFileSync(resolve(__dirname, `../../migrations/${name}.sql`), 'utf8');
       const hash = createHash('sha256').update(sql).digest('hex');
@@ -54,6 +55,36 @@ export class Store implements Repository {
       .all()
       .map((r) => JSON.parse(String(r.data)) as Game)
       .filter((g) => includeRetired || !g.retired);
+  }
+  events(): CommunityEvent[] {
+    return this.db
+      .prepare('SELECT data FROM community_events ORDER BY id')
+      .all()
+      .map((row) => JSON.parse(String(row.data)) as CommunityEvent);
+  }
+  event(id: string): CommunityEvent | undefined {
+    const row = this.db.prepare('SELECT data FROM community_events WHERE id=?').get(id);
+    return row ? (JSON.parse(String(row.data)) as CommunityEvent) : undefined;
+  }
+  saveEvent(event: CommunityEvent): void {
+    this.db
+      .prepare(
+        'INSERT INTO community_events VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',
+      )
+      .run(event.id, JSON.stringify(event));
+  }
+  eventOperations(): EventOperation[] {
+    return this.db
+      .prepare('SELECT data FROM event_operations ORDER BY id')
+      .all()
+      .map((row) => JSON.parse(String(row.data)) as EventOperation);
+  }
+  saveEventOperation(operation: EventOperation): void {
+    this.db
+      .prepare(
+        'INSERT INTO event_operations VALUES (?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',
+      )
+      .run(operation.id, JSON.stringify(operation));
   }
   game(id: string): Game | undefined {
     const row = this.db.prepare('SELECT data FROM games WHERE id=?').get(id);
@@ -197,6 +228,11 @@ export class Store implements Repository {
       const started = this.get<number>('retentionStartedAt') ?? now;
       if (this.get('retentionStartedAt') === undefined) this.set('retentionStartedAt', started);
       const cutoff = now - ADMIN_RETENTION_MS;
+      this.db
+        .prepare(
+          "DELETE FROM event_operations WHERE json_extract(data,'$.status')='completed' AND json_extract(data,'$.completedAt')<=?",
+        )
+        .run(cutoff);
       this.db.prepare('DELETE FROM audit WHERE at<=?').run(cutoff);
       this.db
         .prepare(

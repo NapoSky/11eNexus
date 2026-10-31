@@ -36,7 +36,7 @@ export function renderResourceAudit(report: ResourceAudit, language: Locale): st
     lines.push(
       `## ${label}`,
       '',
-      `| ${t('importReviewName')} | ID | ${t('resourceAuditStatus')} | ${t('games')} | ${t('resourceAuditUsage')} |`,
+      `| ${t('importReviewName')} | ID | ${t('resourceAuditStatus')} | ${t('resourceAuditAssociations')} | ${t('resourceAuditUsage')} |`,
       '| --- | --- | --- | --- | --- |',
     );
     for (const r of resources) {
@@ -45,7 +45,7 @@ export function renderResourceAudit(report: ResourceAudit, language: Locale): st
           ? `${r.subscribers || 0} ${t('resourceAuditSubscribers')}; ${r.references?.map(cell).join(', ') || '—'}; permissions=${r.permissions}`
           : cell(r.category || '');
       lines.push(
-        `| ${cell(r.name)} | ${r.id} | ${t(`resourceAudit_${r.status}`)} | ${r.games.map(cell).join(', ') || '—'} | ${usage} |`,
+        `| ${cell(r.name)} | ${r.id} | ${t(`resourceAudit_${r.status}`)} | ${[...r.games, ...(r.events || [])].map(cell).join(', ') || '—'} | ${usage} |`,
       );
     }
     if (!resources.length) lines.push(`| ${t('empty')} | | | | |`);

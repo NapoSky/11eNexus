@@ -1,5 +1,6 @@
 import { channelName, DomainError, type Game, type Operation } from '../domain/model.js';
 import type { Community, Repository, World } from './ports.js';
+import type { CommunityEvent, EventCategories } from '../domain/community-event.js';
 
 export const GAME_ROLE_MARKER = '811274814841028611';
 export type AuditStatus = 'tracked' | 'untracked' | 'retired' | 'pending';
@@ -9,6 +10,7 @@ export interface AuditResource {
   name: string;
   status: AuditStatus;
   games: string[];
+  events?: string[];
   category?: string;
   subscribers?: number;
   references?: string[];
@@ -42,10 +44,11 @@ type AuditOptions = {
   activeCategoryId: string;
   markerRoleId?: string;
   categoryIds?: string[];
+  events?: CommunityEvent[];
 };
 
 export async function collectResourceAudit(
-  repository: Pick<Repository, 'games' | 'operations' | 'get'>,
+  repository: Pick<Repository, 'games' | 'operations' | 'get' | 'events'>,
   community: Pick<Community, 'snapshot'>,
   options: AuditOptions,
 ): Promise<ResourceAudit> {
@@ -62,6 +65,8 @@ export async function collectResourceAudit(
         .operations()
         .filter((op) => op.status === 'pending' || op.status === 'review'),
       archives: repository.get('archiveCategories'),
+      events: repository.events(),
+      eventCategories: repository.get('eventCategories'),
     });
   const before = revision();
   const world = await community.snapshot();
@@ -69,9 +74,13 @@ export async function collectResourceAudit(
   if (revision() !== before) throw new DomainError('inProgress');
   return auditResources(repository.games(true), repository.operations(), world, {
     ...options,
+    events: repository.events(),
     categoryIds: options.categoryIds || [
       options.activeCategoryId,
       ...(repository.get<string[]>('archiveCategories') || world.archiveCategoryIds),
+      ...Object.values(repository.get<EventCategories>('eventCategories') || {}).filter(
+        (id): id is string => typeof id === 'string',
+      ),
     ],
   });
 }
@@ -148,13 +157,18 @@ export function auditResources(
   ): AuditResource => {
     const linked = games.filter((g) => (kind === 'role' ? g.roleId : g.channelId) === id);
     const tracked = linked.filter((g) => !g.retired);
-    const status: AuditStatus = tracked.length
-      ? 'tracked'
-      : linked.length
-        ? 'retired'
-        : pendingReference(kind, id, name, topic)
-          ? 'pending'
-          : 'untracked';
+    const events = (options.events || []).filter(
+      (e) => e.state !== 'deleted' && (kind === 'role' ? e.roleId === id : e.channelId === id),
+    );
+    const status: AuditStatus = events.some((e) => e.state === 'creating' || e.issue)
+      ? 'pending'
+      : tracked.length || events.length
+        ? 'tracked'
+        : linked.length
+          ? 'retired'
+          : pendingReference(kind, id, name, topic)
+            ? 'pending'
+            : 'untracked';
     if (tracked.length === 1) {
       const game = tracked[0]!;
       const proposed = kind === 'role' ? game.name.slice(0, 100) : channelName(game.name);
@@ -170,7 +184,14 @@ export function auditResources(
             .map((r) => r.id),
         });
     }
-    return { kind, id, name, status, games: linked.map((g) => g.name) };
+    return {
+      kind,
+      id,
+      name,
+      status,
+      games: linked.map((g) => g.name),
+      ...(events.length ? { events: events.map((e) => e.name) } : {}),
+    };
   };
   for (const role of world.roles.filter((r) => r.id !== options.guildId)) {
     if (role.id === marker!.id) continue;
@@ -208,6 +229,13 @@ export function auditResources(
       const resources = kind === 'role' ? world.roles : world.channels;
       if (id && !resources.some((r) => r.id === id))
         report.missing.push({ kind, id, game: game.name });
+    }
+  for (const event of options.events || [])
+    if (event.state !== 'deleted') {
+      if (event.channelId && !world.channels.some((c) => c.id === event.channelId))
+        report.missing.push({ kind: 'channel', id: event.channelId, game: event.name });
+      if (event.roleId && !event.roleDeleted && !world.roles.some((r) => r.id === event.roleId))
+        report.missing.push({ kind: 'role', id: event.roleId, game: event.name });
     }
   for (const list of [report.roles, report.channels, report.trackedOutsideScope])
     list.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base', numeric: true }));

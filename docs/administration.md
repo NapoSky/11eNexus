@@ -8,9 +8,33 @@ Le message permanent du salon staff ouvre un espace personnel. Le bouton **Admin
 
 Les menus sont en français ou en anglais selon la langue Discord de l’admin. Leur consultation et chaque confirmation nécessitent le rôle admin configuré ou la propriété du serveur. Les sessions appartiennent au membre qui les ouvre et expirent après quinze minutes. Une confirmation expire après cinq minutes et ne peut être utilisée qu’une fois. Le bot vérifie à nouveau les droits, les associations et l’état Discord avant l’application.
 
-L’accueil présente les jeux actifs et archivés, les demandes à traiter, les opérations à vérifier et la dernière réconciliation réussie. Il propose quatre rubriques.
+L’accueil présente les jeux actifs et archivés, les demandes à traiter, les opérations à vérifier, le résumé des événements et la dernière réconciliation réussie. Il propose cinq rubriques, dont **Événements**.
 
 **`/nexus-status`** conserve un raccourci de consultation privé pour les admins : jeux actifs/archivés, demandes ouvertes, opérations à vérifier et dernière réconciliation réussie. Il affiche les données enregistrées, sans lancer de diagnostic ni de réconciliation. Le bouton **Accueil admin** permet ensuite d’ouvrir le panneau.
+
+## Événements
+
+Les parcours restent dans un message personnel Components V2, en français ou anglais selon Discord. Les consultations ne publient rien et les actions sont acquittées avant les appels réseau ou l’attente du verrou. Une réponse ancienne ne remplace pas une navigation plus récente.
+
+1. **Créer un événement** : choisir un jeu connu (recherche et pagination), puis saisir son nom et sa présentation. Le jeu n’est pas relancé et ses abonnés ne sont pas copiés.
+2. **Vérifier avant de confirmer** : relire les ressources à créer, les accès Syndiqué, le rôle de notification individuel, le message bilingue épinglé et l’annonce sans mention dans le jeu actif. Si le jeu est archivé ou son salon indisponible, l’annonce est omise. Dans un forum qui exige une étiquette, choisir celle-ci avant de pouvoir confirmer. **Actualiser l’aperçu** conserve la saisie si une ressource pertinente a changé ou si les cinq minutes sont écoulées.
+3. **Confirmer** : création immédiate d’un nouveau salon et d’un rôle simple mentionnable, sans icône obligatoire. Les membres choisissent uniquement les mentions de cet événement depuis le message épinglé ; l’accès reste indépendant de cet abonnement. Aucun ancien salon n’est adopté.
+4. **Modifier** : mettre à jour le nom du salon, le rôle et la présentation épinglée après un nouvel aperçu. Les messages et abonnés sont conservés.
+5. **Fermer et archiver** : masquer l’accès membre, désactiver les contrôles et supprimer le rôle, puis ranger le salon dans **Archives Nexus · Events**. L’historique est conservé pour les admins ; aucun accès de consultation membre ni réouverture d’événement n’est prévu.
+
+La catégorie **Événements** se place au-dessus des jeux du moment lorsqu’un événement est ouvert, puis rejoint les archives en étant masquée lorsqu’il n’y en a plus. Les salons actifs sont triés alphabétiquement. Les trois catégories d’archives des jeux restent indépendantes de l’unique archive événementielle de 50 salons. Plusieurs événements peuvent se rapporter au même jeu. Ni les seuils de 48 heures et 30 jours, ni le minimum de quinze jeux ne s’appliquent aux événements.
+
+À saturation, l’aperçu désigne l’événement géré dont la date d’archivage est la plus ancienne et annonce la suppression définitive de son salon et de son historique. **Supprimer et archiver** confirme cette cible précise ; Annuler ne supprime rien. **Fermer sans supprimer** ouvre un aperçu sans nettoyage : après confirmation, le salon reste masqué à son emplacement et son rangement attend une place libre. Cette clôture reste possible lorsque l’archive est occupée uniquement par des salons inconnus. Les salons inconnus ne sont jamais proposés au nettoyage. Un changement de cible, d’accès ou une nouvelle activité invalide la confirmation. Une suppression réussie suivie d’un rangement échoué est affichée comme résultat partiel et n’autorise aucune autre suppression.
+
+### Reprise et changements manuels
+
+Un salon fermé reste masqué si son déplacement échoue. Sa fiche indique **Fermé · rangement à terminer**, les étapes confirmées et l’action **Vérifier et reprendre**, avec nouvel aperçu. Un rôle impossible à supprimer ne provoque pas la réouverture du salon. Les contrôles sont aussi refusés côté serveur dès la clôture, même si leur modification visuelle a échoué.
+
+Un épinglage interrompu reprend le message déjà créé. Si un modérateur a supprimé ce message, une réparation explicite peut en publier un nouveau, annoncé dans l’aperçu. Un rôle ou salon supprimé manuellement n’est pas recréé et un salon déplacé hors périmètre n’est pas ramené automatiquement. Une catégorie supprimée nécessite une vérification manuelle ; le bot n’adopte pas une catégorie homonyme.
+
+Après un résultat de création inconnu, la reprise recherche les ressources confirmables grâce aux corrélations du salon, au journal d’audit Discord pour les catégories/rôles, ou aux cent messages/publications récents pour un envoi incertain. En cas de preuve absente ou ambiguë, elle s’arrête et conserve l’opération à vérifier ; elle ne crée pas de doublon. L’archive reste protégée et aucune ressource n’est supprimée pour compenser une création partielle.
+
+Les événements et leurs corrélations sont conservés ; les reçus d’opérations terminées expirent après trente jours, les opérations non résolues restent conservées. La migration `003` s’applique au démarrage sans modifier les migrations précédentes. Aucun nouveau paramètre d’environnement ni réenregistrement des commandes n’est nécessaire pour ajouter cette rubrique ; le serveur doit exécuter la nouvelle image.
 
 ## Demandes
 

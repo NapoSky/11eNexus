@@ -30,6 +30,17 @@ async function main(): Promise<void> {
       }),
   );
   const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+  const eventOrder = new ActiveChannelOrder(
+    client,
+    settings.guildId,
+    () => app.controller.events.categories().activeId,
+    () =>
+      app.nexus.mutex.run(async () => {
+        const id = app.controller.events.categories().activeId;
+        if (!stopping && client.isReady() && id)
+          await app.controller.events.community.sortChannels(id);
+      }),
+  );
   loopDelay.enable();
   const health = (ready: boolean) => {
     mkdirSync(dirname(settings.healthPath), { recursive: true });
@@ -62,6 +73,7 @@ async function main(): Promise<void> {
     loopDelay.disable();
     health(false);
     await channelOrder.stop();
+    await eventOrder.stop();
     await client.destroy();
     await syncing;
     await app.controller.drain();
@@ -83,6 +95,7 @@ async function main(): Promise<void> {
   });
   app.controller.listen();
   channelOrder.listen();
+  eventOrder.listen();
   app.gateway.onActivity((id, at) => app.nexus.recordActivity(id, at));
   const synchronize = async () => {
     if (busy || stopping || !client.isReady()) return;
@@ -92,7 +105,9 @@ async function main(): Promise<void> {
     try {
       await app.nexus.maintain();
       await app.nexus.synchronize();
+      await app.controller.events.synchronize();
       channelOrder.request();
+      eventOrder.request();
       await app.nexus.deliverNewGameAnnouncements();
       lastSync = Date.now();
       health(true);

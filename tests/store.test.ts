@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/infrastructure/store.js';
+import type { CommunityEvent } from '../src/domain/community-event.js';
 import { asset, game, member, now } from './helpers.js';
 
 let directory: string;
@@ -20,6 +21,52 @@ test('SQLite enforces uniqueness for RAWG, channel and role identities', () => {
   expect(() => store.saveGame(game({ rawgId: 123 }))).toThrow();
   expect(() => store.saveGame(game({ channelId: g.channelId }))).toThrow();
   expect(() => store.saveGame(game({ roleId: g.roleId }))).toThrow();
+});
+test('event correlations and unresolved creation receipts survive reopening without changing game migrations', () => {
+  const event: CommunityEvent = {
+    id: 'event',
+    gameId: 'game',
+    gameName: 'Game',
+    name: 'Campaign',
+    description: 'Hello',
+    state: 'creating',
+    creatorId: 'admin',
+    createdAt: now,
+    closedAt: null,
+    archivedAt: null,
+    channelId: 'channel',
+    roleId: 'role',
+    roleDeleted: false,
+    messageId: 'message',
+    announcementChannelId: null,
+    announcementId: null,
+    issue: 'e.partial',
+  };
+  store.saveEvent(event);
+  store.saveEventOperation({
+    id: 'operation',
+    eventId: event.id,
+    actorId: 'admin',
+    kind: 'create',
+    status: 'review',
+    startedAt: now,
+    completedAt: null,
+    attempted: ['message'],
+    cleanupId: null,
+    cleanupRevision: null,
+    cleaned: false,
+  });
+  expect(() => store.saveEvent({ ...event, id: 'duplicate' })).toThrow();
+  store.close();
+  store = new Store(join(directory, 'live.sqlite'));
+  expect(store.event(event.id)).toEqual(event);
+  expect(store.eventOperations()[0]?.status).toBe('review');
+  expect(
+    store.db
+      .prepare('SELECT id FROM schema_migrations ORDER BY id')
+      .all()
+      .map((r) => r.id),
+  ).toEqual(['001', '002', '003']);
 });
 test('a failed transaction rolls back all subscriber changes', () => {
   const g = game();

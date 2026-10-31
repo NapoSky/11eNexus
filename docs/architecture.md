@@ -18,6 +18,18 @@ Le classement alphabétique des salons de la catégorie active relève de l'infr
 
 Le domaine reste volontairement petit : un agrégat Game, une identité UUID interne, une identité RAWG optionnelle et des références Discord uniques. Des IDs de rôle et de salon sont des références, pas l’identité du jeu. Les abonnements sont un concept indépendant de l’activité et de la visibilité du salon.
 
+## Événements autonomes
+
+`CommunityEvent` porte son salon, son rôle, le message épinglé et les dates de clôture/archivage. Le jeu associé est une référence informative avec nom conservé ; il n’entraîne aucune cascade de rotation, quota, abonnement ou activité. Les tables additives `community_events` et `event_operations` sont créées par la migration `003`. Les ressources événementielles sont reconnues par l’audit et le statut admin sans entrer dans le recyclage des rôles de jeux.
+
+`EventService` dépend de `Repository` et `EventCommunity` et partage le mutex Nexus et le bail du runtime. L’adaptateur Discord événementiel lit les salons, rôles et références de permissions sans charger les détenteurs de tous les rôles. Les confirmations expirent après cinq minutes ; leur empreinte couvre les cibles et capacités pertinentes, sans les abonnements étrangers à l’action. Chaque mutation a un reçu préalable et les IDs confirmés sont enregistrés à chaque étape. Une reprise est toujours une opération admin explicite, jamais un rejeu au démarrage.
+
+La clôture retire l’accès avant le déplacement et conserve un état fermé si le rangement échoue. Le nettoyage vise un salon archivé précis, revérifié avant suppression ; il n’autorise aucune suppression supplémentaire après une erreur. Les corrélations d’événements et opérations non résolues restent conservées, les opérations terminées expirent après trente jours. Une création incertaine peut être corrélée par le marqueur du salon, le journal d’audit des ressources créées ou une recherche bornée du message ; l’absence de preuve conduit à une vérification manuelle.
+
+`EventController` acquitte avant réseau ou verrou, ouvre les modales sans attendre une lecture Discord et vérifie les droits actuels avant mutation. Les réponses privées sont sérialisées par message et invalidées lors d’une navigation plus récente, y compris entre le hub admin et les événements. Les contrôles publics portent l’identité durable de l’événement, les contrôles privés utilisent des sessions liées à leur propriétaire. Les textes FR/EN et mentions autorisées sont explicites sur les messages, modifications et publications de forum.
+
+La catégorie des événements est initialisée uniquement par une création confirmée. Sa position et sa visibilité changent lors des opérations admin, sans recréation d’une catégorie supprimée. Un second `ActiveChannelOrder` lit son ID persistant à la demande et maintient seulement l’ordre alphabétique de ses salons textuels, avec les mêmes déclencheurs et protections que les jeux.
+
 ## États et horloges
 
 Un jeu est `active`, `archived` ou `unavailable`. Son rôle est `present`, `recycled` ou `missing`. `blocked` suspend les actions et la rotation en cas de doute ; `retired` le retire du catalogue sans supprimer ses ressources.
@@ -47,7 +59,7 @@ Les autorisations sont vérifiées côté serveur et actualisées pour les mutat
 ## Limites de cette V1
 
 - Les doublons historiques exigent un choix admin de salon canonique. Discord ne propose pas de fusion native conservant intégralement auteurs, dates et liens des messages. Les autres salons restent conservés et hors gestion.
-- Les évènements et canaux vocaux restent hors périmètre.
+- Les canaux vocaux restent hors périmètre.
 - L’icône vient du visuel fournisseur ou d’une validation admin ; son sens ou sa qualité ne peut pas être garanti automatiquement.
 - Les modifications manuelles de permissions ne sont pas corrigées en boucle. Les mouvements gérés et réparations explicites réappliquent les dérogations standard.
 - L’état `unhealthy` expose une panne ; le redémarrage et l’alerte d’infrastructure appartiennent à l’hébergeur.

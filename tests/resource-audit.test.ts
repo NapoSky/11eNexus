@@ -6,6 +6,7 @@ import {
 import { renderResourceAudit } from '../src/presentation/resource-audit.js';
 import type { RoleObservation, World } from '../src/application/ports.js';
 import type { Game, Operation } from '../src/domain/model.js';
+import type { CommunityEvent } from '../src/domain/community-event.js';
 import { game } from './helpers.js';
 
 const guildId = '100000000000000100';
@@ -83,6 +84,37 @@ test('tracking uses IDs despite different names and restricts untracked resource
     orphanRole,
   ]);
   expect(JSON.stringify(report)).not.toContain(memberId);
+});
+test('event resources stay tracked independently of games and never receive game renaming suggestions', () => {
+  const event: CommunityEvent = {
+    id: 'event',
+    gameId: games[0]!.id,
+    gameName: games[0]!.name,
+    name: 'Community campaign',
+    description: 'Hello',
+    state: 'active',
+    creatorId: 'admin',
+    createdAt: 1,
+    closedAt: null,
+    archivedAt: null,
+    channelId: orphanChannel,
+    roleId: orphanRole,
+    roleDeleted: false,
+    messageId: 'message',
+    announcementChannelId: null,
+    announcementId: null,
+    issue: null,
+  };
+  let report = auditResources(games, [], world, { ...options, events: [event] });
+  expect(report.roles.find((r) => r.id === orphanRole)).toMatchObject({
+    status: 'tracked',
+    events: [event.name],
+  });
+  expect(report.channels.find((r) => r.id === orphanChannel)?.status).toBe('tracked');
+  expect(report.nameDifferences.some((d) => d.id === orphanRole)).toBe(false);
+  event.issue = 'e.partial';
+  report = auditResources(games, [], world, { ...options, events: [event] });
+  expect(report.roles.find((r) => r.id === orphanRole)?.status).toBe('pending');
 });
 
 test('tied positions use Discord snowflake ordering rather than names or array order', () => {
@@ -175,7 +207,12 @@ test.each(['fr', 'en'] as const)(
 );
 
 test('a concurrent creation or repair cancels the audit instead of inventing untracked resources', async () => {
-  const repository = { games: () => games, operations: () => [], get: () => undefined };
+  const repository = {
+    games: () => games,
+    events: () => [],
+    operations: () => [],
+    get: () => undefined,
+  };
   const community = {
     snapshot: async () => {
       games[0]!.roleId = orphanRole;

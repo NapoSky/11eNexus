@@ -310,7 +310,14 @@ export class Administration {
     const report = auditResources(repo.games(true), repo.operations(), world, {
       guildId: this.guildId,
       activeCategoryId: nexus.policy.activeCategoryId,
-      categoryIds: [nexus.policy.activeCategoryId, ...world.archiveCategoryIds],
+      categoryIds: [
+        nexus.policy.activeCategoryId,
+        ...world.archiveCategoryIds,
+        ...Object.values(repo.get<Record<string, string | null>>('eventCategories') || {}).filter(
+          (id): id is string => typeof id === 'string',
+        ),
+      ],
+      events: repo.events(),
     });
     const revision = this.revision();
     const version = this.worldVersion(world);

@@ -43,7 +43,7 @@ export class ActiveChannelOrder {
   constructor(
     private readonly client: Client,
     private readonly guildId: string,
-    private readonly categoryId: string,
+    private readonly categoryId: string | (() => string | null),
     private readonly sort: () => Promise<void>,
     private readonly log: Pick<AppLogger, 'warn'> = logger,
   ) {}
@@ -52,7 +52,8 @@ export class ActiveChannelOrder {
     return (
       'guild' in channel &&
       channel.guild.id === this.guildId &&
-      channel.parentId === this.categoryId &&
+      channel.parentId ===
+        (typeof this.categoryId === 'function' ? this.categoryId() : this.categoryId) &&
       [0, 5, 15, 16].includes(channel.type)
     );
   }

@@ -261,6 +261,23 @@ export class AdminViews {
         }),
       );
       line(last ? t('a.lastSync', { date: `<t:${Math.floor(last.at / 1000)}:R>` }) : t('a.noSync'));
+      const events = repo.events().filter((e) => e.state !== 'deleted');
+      line(
+        t('e.summary', {
+          active: events.filter((e) => e.state === 'active').length,
+          archived: events.filter((e) => e.state === 'archived').length,
+          pending: repo.eventOperations().filter((o) => o.status !== 'completed').length,
+        }),
+      );
+      if (route.page === 'home') {
+        line(`### ${t('e.title')}\n${t('e.hubHelp')}`);
+        controls(
+          new ButtonBuilder()
+            .setStyle(ButtonStyle.Secondary)
+            .setLabel(t('e.title'))
+            .setCustomId('ne:home'),
+        );
+      }
       if (route.page === 'home')
         for (const [key, help, action] of [
           ['a.requests', 'a.requestsHelp', 'requests'],
