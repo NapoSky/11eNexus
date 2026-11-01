@@ -4,7 +4,7 @@ Bot Discord communautaire FR/EN : des salons de jeux visibles selon leur activit
 
 Node 26 · TypeScript 7 · discord.js · i18next · SQLite intégré à Node · Jest/SWC. Hébergement personnel avec Docker Compose, déploiement manuel. Aucun service payant requis. [English quick start](docs/quickstart.en.md).
 
-Le [site communautaire multigaming](site/README.md) est indépendant du bot, dans `site/`. Il cible `fo.11e-foxhole.com`, avec présentation FR/EN et pages de conditions d’utilisation et de confidentialité de Nexus. Son workflow GitHub Pages publie uniquement les modifications de `site/**` sur `main` ; le déploiement du bot reste manuel.
+Le [site communautaire multigaming](site/README.md) est indépendant du bot, dans `site/`. Il cible `multigaming.11e-foxhole.com`, avec présentation FR/EN et pages de conditions d’utilisation et de confidentialité de Nexus. Son workflow GitHub Pages publie uniquement les modifications de `site/**` sur `main` ; le déploiement du bot reste manuel.
 
 ## Fonctionnement
 
