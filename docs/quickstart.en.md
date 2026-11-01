@@ -12,7 +12,9 @@ After rebuilding the image, stop the bot and rerun `docker compose run --rm bot 
 
 Use Node **26** and pnpm **12.14.0** for local development. The image and CI follow Node 26. See [operations](operations.md) for graceful shutdown, resource bounds, health checks and verified backups.
 
-1. Copy `.env.example` to `.env` and supply the existing Discord bot token, guild ID and RAWG key. Protect it with `chmod 600 .env`.
+The official instance is restricted to guild `389372877818036236`. A different `GUILD_ID` is rejected before connecting to Discord. At runtime, the bot leaves every other guild on startup and whenever it is added; periodic reconciliation retries failed departures. Foreign-guild and DM interactions are rejected with a private localized message before accessing community data. Autocomplete returns no results. Read-only CLI diagnostics never install the departure listeners. This is an automatic departure after installation, not a restriction enforced by Discord's installation screen. Rebuild and restart the bot manually to enable it; no setup rerun or migration is needed.
+
+1. Copy `.env.example` to `.env`, keep `GUILD_ID=389372877818036236` and supply the existing Discord bot token and RAWG key. Protect it with `chmod 600 .env`.
 2. Enable **Server Members Intent** in Discord’s Developer Portal. Place the bot’s role above game roles. Grant channel/role management, history, attachments/embeds, thread management, and role mention permissions. Onboarding edits also require server management. Message content intent is unnecessary.
 3. Build with `docker compose build --pull`, then run `docker compose run --rm bot node dist/cli.js doctor` for a read-only check.
 4. Import existing games using a reviewed manifest and plan. See [migration instructions](migration.md); existing channels are never adopted automatically.
@@ -62,7 +64,7 @@ To update an existing public panel with new buttons, stop the bot, run `docker c
 
 To audit tracked and untracked resources against the production database, run `docker compose run --rm bot node dist/cli.js audit --output /data/resource-audit.json`. Read `data/resource-audit.md` or its JSON counterpart on the host. It checks ordinary roles below the configured Games marker and textual channels in active/archive categories, using resource IDs rather than names. Retired entries and unfinished operations are separate from strictly untracked resources. Counts, known permission/onboarding references, missing resources, naming suggestions and name conflicts support later review or a renaming script. Subscriber IDs are not exported. Override the default marker with `--role-marker ID`, categories with `--categories ID,ID`, and report language with `--locale en`. The audit can run alongside the bot; incomplete snapshots, an empty database or a changing catalogue prevent a misleading clean report. It does not rename or remove anything.
 
-Deployment is manual: pull the private repository, make a SQLite backup, then `docker compose up -d --build`. Back up the named volume using the CLI’s online SQLite backup command. Never remove the volume with `down -v`. See the [main guide](../README.md) for restoration and administration.
+Deployment is manual: pull the repository, make a SQLite backup, then `docker compose up -d --build`. Back up the named volume using the CLI’s online SQLite backup command. Never remove the volume with `down -v`. See the [main guide](../README.md) for restoration and administration.
 
 [RAWG Free](https://rawg.io/apidocs) allows personal noncommercial use and requires attribution links, which Nexus displays. Nexus caps its own requests at 18,000 per UTC month and has no paid fallback or Twitch connection. GitHub workflows use your account’s included Actions allowance; keep paid budgets at zero for strict free-tier use.
 

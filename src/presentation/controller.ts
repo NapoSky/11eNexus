@@ -239,6 +239,24 @@ export class Controller {
     await (await this.gateway.guild()).commands.set(commands());
   }
   async handle(interaction: Interaction): Promise<void> {
+    if (interaction.guildId !== this.gateway.config.guildId) {
+      try {
+        if (interaction.isAutocomplete()) await interaction.respond([]);
+        else if ('reply' in interaction)
+          await interaction.reply({
+            ...this.views.feedback(
+              locale(interaction.locale),
+              translator(locale(interaction.locale))('guildRestricted'),
+              true,
+              false,
+            ),
+            flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+          });
+      } catch (err) {
+        this.log.warn({ event: 'restricted_guild_response_failed', err });
+      }
+      return;
+    }
     if (this.eventController.accepts(interaction)) {
       await this.eventController.handle(interaction);
       return;

@@ -1,7 +1,8 @@
 import { config } from '../src/infrastructure/config.js';
-const valid = { BOT_TOKEN: 'test', GUILD_ID: '100000000000000000' };
+const valid = { BOT_TOKEN: 'test', GUILD_ID: '389372877818036236' };
 test('agreed policy and roles are defaults, with RAWG failure allowed without a key', () => {
   expect(config(valid)).toMatchObject({
+    guildId: '389372877818036236',
     maxGames: 150,
     minActive: 15,
     maxArchives: 3,
@@ -22,6 +23,8 @@ test.each([
   { MAX_GAMES: '10' },
   { RECONCILE_INTERVAL_SECONDS: '0' },
   { GUILD_ID: 'invalid' },
+  { GUILD_ID: '100000000000000000' },
+  { GUILD_ID: '0389372877818036236' },
   { ADMIN_ROLE_ID: '948308796416098395' },
 ])('invalid policy is rejected at startup: %p', (override) => {
   expect(() => config({ ...valid, ...override })).toThrow('Invalid configuration');

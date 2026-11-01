@@ -140,6 +140,7 @@
   "capacityAlert": "L’archivage de {{game}} est bloqué par la capacité ou les permissions. Une intervention administrative est nécessaire.",
   "activityUnavailable": "L’activité de {{game}} n’a pas pu être vérifiée intégralement ; son archivage automatique est suspendu.",
   "forbidden": "Le rôle Syndiqué est nécessaire pour utiliser ce panneau.",
+  "guildRestricted": "Cette instance de Nexus est réservée au Discord multigaming du 11e.",
   "adminOnly": "Cette action est réservée aux administrateurs.",
   "notFound": "Cet élément n’existe plus. Rouvre le panneau.",
   "invalidInput": "Vérifie les informations saisies puis réessaie.",

@@ -10,12 +10,14 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { ActiveChannelOrder } from './infrastructure/active-channel-order.js';
 import { Shutdown } from './infrastructure/shutdown.js';
 import { imageWork } from './infrastructure/image-work.js';
+import { GuildRestriction } from './infrastructure/guild-restriction.js';
 
 async function main(): Promise<void> {
   await languagesReady;
   const app = bootstrap();
   const owner = randomUUID();
   const { repository, settings, client } = app;
+  const guildRestriction = new GuildRestriction(client);
   if (!repository.acquireLease(owner, Date.now()))
     throw new Error('Another instance owns this database');
   const backgroundReads = new AbortController();
@@ -91,6 +93,7 @@ async function main(): Promise<void> {
       if (scheduler) clearInterval(scheduler);
       loopDelay.disable();
       app.controller.stopAccepting();
+      guildRestriction.stopAccepting();
       stopActivity();
       backgroundReads.abort();
       try {
@@ -99,7 +102,13 @@ async function main(): Promise<void> {
         logger.error({ event: 'shutdown_health_failed', err });
       }
     },
-    drain: () => [channelOrder.stop(), eventOrder.stop(), syncing, app.controller.drain()],
+    drain: () => [
+      guildRestriction.drain(),
+      channelOrder.stop(),
+      eventOrder.stop(),
+      syncing,
+      app.controller.drain(),
+    ],
     drainMutations: () => app.nexus.mutex.run(async () => {}),
     disconnect: () => client.destroy(),
     closeStorage: () => {
@@ -120,12 +129,14 @@ async function main(): Promise<void> {
     logger.fatal({ event: 'unhandled_rejection', err });
     void stop(1);
   });
+  guildRestriction.listen();
   app.controller.listen();
   channelOrder.listen();
   eventOrder.listen();
   const stopActivity = app.gateway.onActivity((id, at) => app.nexus.recordActivity(id, at));
   const synchronize = async () => {
     if (busy || shutdown.stopping || !client.isReady()) return;
+    void guildRestriction.enforce();
     busy = true;
     const startedAt = performance.now();
     logger.info({ event: 'reconciliation_started' });

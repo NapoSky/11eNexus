@@ -6,6 +6,16 @@ Node 26 · TypeScript 7 · discord.js · i18next · SQLite intégré à Node · 
 
 Le [site communautaire multigaming](site/README.md) est indépendant du bot, dans `site/`. Il cible `multigaming.11e-foxhole.com`, avec présentation FR/EN et pages de conditions d’utilisation et de confidentialité de Nexus. Son workflow GitHub Pages publie uniquement les modifications de `site/**` sur `main` ; le déploiement du bot reste manuel.
 
+## Instance réservée au 11e
+
+Cette instance est limitée au serveur Discord `389372877818036236`. `GUILD_ID` doit correspondre exactement à cet identifiant ; une autre valeur bloque le démarrage avant connexion à Discord. Changer uniquement la configuration ne permet donc pas d’autoriser un autre serveur.
+
+Le runtime quitte automatiquement tous les autres serveurs dès sa connexion et lors d’un nouvel ajout. Chaque cycle de réconciliation revérifie cette restriction et retente les départs qui ont échoué. Les appels concurrents pour le même serveur sont regroupés ; un échec n’interrompt pas le fonctionnement du 11e. Les départs sont journalisés avec le logger partagé et sont drainés avant déconnexion lors d’un arrêt gracieux.
+
+Les interactions hors du serveur autorisé, y compris en message privé, sont refusées avant tout accès au catalogue ou routage membre/admin/événement, avec une réponse privée FR/EN. Les autocomplétions renvoient une liste vide. Les commandes CLI de diagnostic n’installent pas le traitement de départ et restent en lecture seule.
+
+Cette protection ne bloque pas l’ajout initial dans l’interface Discord : le bot repart après réception de l’événement. Pour l’activer sur une instance existante, reconstruire et redémarrer le bot selon le déploiement manuel habituel ; aucun `setup`, réenregistrement des commandes ou changement de base n’est nécessaire.
+
 ## Fonctionnement
 
 - Un panneau public bilingue, en lecture seule pour les membres. Les boutons ouvrent un parcours personnel dans la langue de Discord : catalogue, recherche, création, relance, abonnements et propositions.

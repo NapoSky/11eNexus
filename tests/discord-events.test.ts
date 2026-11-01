@@ -25,7 +25,7 @@ beforeEach(() => {
   Object.defineProperty(client, 'user', { value: { id: botId } });
   gateway = new DiscordCommunity(
     client,
-    config({ BOT_TOKEN: 'test', GUILD_ID: '100000000000000000' }),
+    config({ BOT_TOKEN: 'test', GUILD_ID: '389372877818036236' }),
     f.repository,
   );
   events = new DiscordEvents(gateway);

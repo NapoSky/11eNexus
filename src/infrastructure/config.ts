@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+export const NEXUS_GUILD_ID = '389372877818036236';
 export interface Config {
   token: string;
   guildId: string;
@@ -52,6 +53,7 @@ export function config(env: NodeJS.ProcessEnv = process.env): Config {
     roleReserve: number('ROLE_RESERVE', 5, 0, 50),
     notificationCooldown: number('NOTIFICATION_COOLDOWN_SECONDS', 900, 60, 86400) * 1000,
   };
+  if (result.guildId !== NEXUS_GUILD_ID) throw new Error('Invalid configuration: GUILD_ID');
   if (result.minActive > result.maxGames)
     throw new Error('Invalid configuration: MIN_ACTIVE_GAMES');
   if (result.memberRoleId === result.adminRoleId)

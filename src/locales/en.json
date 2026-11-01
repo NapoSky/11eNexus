@@ -140,6 +140,7 @@
   "capacityAlert": "Archiving {{game}} is blocked by capacity or permissions. Administrative action is required.",
   "activityUnavailable": "Activity could not be fully checked for {{game}}; automatic archiving is skipped.",
   "forbidden": "You need the Syndiqué role to use this panel.",
+  "guildRestricted": "This Nexus instance is reserved for the 11e multigaming Discord server.",
   "adminOnly": "This action is reserved for administrators.",
   "notFound": "This item no longer exists. Open the panel again.",
   "invalidInput": "Check the information entered and try again.",

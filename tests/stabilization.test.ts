@@ -22,7 +22,7 @@ function ui(f: ReturnType<typeof fixture>) {
   const client = new Client({ intents: [] });
   const gateway = new DiscordCommunity(
     client,
-    config({ BOT_TOKEN: 'test', GUILD_ID: '100000000000000000' }),
+    config({ BOT_TOKEN: 'test', GUILD_ID: '389372877818036236' }),
     f.repository,
   );
   const controller = new Controller(f.nexus, gateway, log as never);

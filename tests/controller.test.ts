@@ -24,7 +24,7 @@ beforeEach(() => {
   client = new Client({ intents: [] });
   gateway = new DiscordCommunity(
     client,
-    config({ BOT_TOKEN: 'test', GUILD_ID: '100000000000000000' }),
+    config({ BOT_TOKEN: 'test', GUILD_ID: '389372877818036236' }),
     f.repository,
   );
   controller = new Controller(f.nexus, gateway, log);
@@ -72,6 +72,70 @@ test('the public panel opens an ephemeral localized catalogue without editing it
     expect.objectContaining({ allowedMentions: { parse: [] } }),
   );
   expect(JSON.stringify(i.editReply.mock.calls)).toContain('Jeux');
+});
+
+test.each([
+  ['fr', 'nx:games', 'other-guild', 'réservée au Discord multigaming du 11e'],
+  ['en', 'nx:games', null, 'reserved for the 11e multigaming Discord server'],
+  ['fr', 'na:home', 'other-guild', 'réservée au Discord multigaming du 11e'],
+  [
+    'en',
+    'ne:subscribe:foreign-event',
+    'other-guild',
+    'reserved for the 11e multigaming Discord server',
+  ],
+])(
+  'rejects %s interactions on %s outside the authorized server before routing',
+  async (language, customId, guildId, message) => {
+    const i = { ...button(customId!), guildId, locale: language };
+    const memberActor = jest.spyOn(gateway, 'actor');
+    const adminHandle = jest.spyOn(controller.administration, 'handle');
+    const eventHandle = jest.spyOn(controller.eventController, 'handle');
+    const games = jest.spyOn(f.repository, 'games');
+    const sessions = jest.spyOn(f.repository, 'saveSession');
+    await controller.handle(i as unknown as Interaction);
+    expect(memberActor).not.toHaveBeenCalled();
+    expect(adminHandle).not.toHaveBeenCalled();
+    expect(eventHandle).not.toHaveBeenCalled();
+    expect(games).not.toHaveBeenCalled();
+    expect(sessions).not.toHaveBeenCalled();
+    expect(i.deferReply).not.toHaveBeenCalled();
+    expect(i.deferUpdate).not.toHaveBeenCalled();
+    expect(i.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+        allowedMentions: { parse: [] },
+      }),
+    );
+    expect(controls(i.reply.mock.calls[0]![0])).toHaveLength(0);
+    expect(JSON.stringify(i.reply.mock.calls)).toContain(message);
+  },
+);
+
+test('foreign autocomplete receives no catalogue data', async () => {
+  const respond = jest.fn(async () => {});
+  const games = jest.spyOn(f.repository, 'games');
+  const i = {
+    ...button(''),
+    guildId: 'other-guild',
+    isAutocomplete: () => true,
+    respond,
+  };
+  await controller.handle(i as unknown as Interaction);
+  expect(respond).toHaveBeenCalledWith([]);
+  expect(games).not.toHaveBeenCalled();
+  expect(i.reply).not.toHaveBeenCalled();
+});
+
+test('a failed foreign-server refusal is logged without attempting another callback', async () => {
+  const i = { ...button('nx:games'), guildId: 'other-guild' };
+  i.reply.mockRejectedValueOnce(new Error('synthetic private callback error'));
+  await expect(controller.handle(i as unknown as Interaction)).resolves.toBeUndefined();
+  expect(i.reply).toHaveBeenCalledTimes(1);
+  expect(i.editReply).not.toHaveBeenCalled();
+  expect(log.warn).toHaveBeenCalledWith(
+    expect.objectContaining({ event: 'restricted_guild_response_failed' }),
+  );
 });
 
 test('shutdown stops accepting gateway interactions while draining the accepted request', async () => {
