@@ -1,0 +1,278 @@
+{
+  "lang": "en",
+  "title": "The 11e — Different worlds. Same team.",
+  "description": "Born in Foxhole, the 11e community comes together across co-op, survival, strategy games and beyond. Find your next team.",
+  "skip": "Skip to content",
+  "brand": "THE MULTIGAMING COMMUNITY",
+  "nav": {
+    "community": "The 11e spirit",
+    "games": "Our games",
+    "foxhole": "Our roots",
+    "join": "Join our Discord",
+    "menu": "Open navigation"
+  },
+  "hero": {
+    "eyebrow": "BORN IN FOXHOLE. TOGETHER EVERYWHERE.",
+    "line1": "DIFFERENT WORLDS.",
+    "line2": "SAME TEAM.",
+    "body": "One last assault. A new colony. An expedition gone sideways. The games change. The joy of playing together stays.",
+    "primary": "Find your next team",
+    "secondary": "Explore our games",
+    "caption": "NEXT DESTINATION",
+    "switch": "Choose a universe",
+    "scroll": "THE ADVENTURE CONTINUES",
+    "footnote": "FR / EN · Cooperation · Good company"
+  },
+  "strip": {
+    "games": "GAMES IN OUR CATALOGUE",
+    "active": "GAMES OF THE MOMENT",
+    "languages": "ONE COMMUNITY, TWO LANGUAGES",
+    "spirit": "ALWAYS BETTER TOGETHER"
+  },
+  "community": {
+    "eyebrow": "01 / THE 11e SPIRIT",
+    "title": "Come for a game.\nStay for the people.",
+    "body": "At the 11e, we love a well-laid plan as much as a night that goes completely off the rails. What brings us together is sharing the game.",
+    "items": [
+      {
+        "number": "01",
+        "title": "Find your team",
+        "body": "A squad to complete, a crew to join, a world to build: there is a place for you."
+      },
+      {
+        "number": "02",
+        "title": "Play at your pace",
+        "body": "Start a session, return to a favourite or discover a new game. You do not have to stick to one battlefield."
+      },
+      {
+        "number": "03",
+        "title": "Share more than a game",
+        "body": "Voice chats, conversations, helping hands and good memories are part of the adventure, too."
+      }
+    ]
+  },
+  "featured": {
+    "eyebrow": "02 / A CHANGE OF SCENERY",
+    "title": "What are we playing tonight?",
+    "body": "A few worlds where you can find the 11e. The next adventure starts on Discord.",
+    "link": "Explore the full catalogue",
+    "discover": "Find the players",
+    "cards": [
+      {
+        "slug": "helldivers-2",
+        "name": "Helldivers 2",
+        "genre": "CO-OP / ORGANISED CHAOS",
+        "line": "Democracy is waiting for your squad."
+      },
+      {
+        "slug": "valheim",
+        "name": "Valheim",
+        "genre": "SURVIVAL / BUILDING",
+        "line": "First a cabin. Then a whole kingdom."
+      },
+      {
+        "slug": "stellaris",
+        "name": "Stellaris",
+        "genre": "STRATEGY / GRAND AMBITIONS",
+        "line": "Our borders? The next galaxy."
+      },
+      {
+        "slug": "barotrauma",
+        "name": "Barotrauma",
+        "genre": "CO-OP / TROUBLED WATERS",
+        "line": "Everything is fine. More or less."
+      }
+    ]
+  },
+  "catalogue": {
+    "eyebrow": "03 / OUR PLAYGROUND",
+    "title": "A whole world of possibilities.",
+    "body": "From current favourites to adventures worth revisiting, explore the community’s games.",
+    "active": "Of the moment",
+    "all": "All games",
+    "search": "Search for a game",
+    "placeholder": "Got a game in mind?",
+    "genre": "Every universe",
+    "count": "games to explore",
+    "empty": "No games found. Try another name or filter.",
+    "snapshot": "Selection updated on 31 October 2026. Tastes change: find current activity on Discord.",
+    "genres": {
+      "coop": "Cooperation",
+      "survival": "Survival & building",
+      "strategy": "Strategy & management",
+      "space": "Space & exploration",
+      "action": "Action & multiplayer"
+    },
+    "onDiscord": "Find this game on the 11e Discord"
+  },
+  "origins": {
+    "eyebrow": "04 / OUR ROOTS",
+    "title": "A regiment.\nA whole community.",
+    "body": "The 11e’s story began on Foxhole’s battlefields, fighting for the Wardens. Logistics, operations and long evenings built friendships that reach far beyond the front lines.",
+    "body2": "We bring that same spirit wherever we go: work together, help each other and make great stories along the way.",
+    "cta": "Meet the 11e in Foxhole",
+    "caption": "FOXHOLE / WHERE IT ALL BEGAN"
+  },
+  "join": {
+    "eyebrow": "THE RALLYING POINT",
+    "title": "Someone’s missing.\nCould it be you?",
+    "body": "Drop into Discord, say hello and find the games you love. See you in voice chat.",
+    "cta": "Join the adventure",
+    "note": "Already one of us? Find your games and notification preferences with Nexus on the server."
+  },
+  "footer": {
+    "tagline": "Different worlds. Same team.",
+    "discord": "Discord",
+    "foxhole": "The Foxhole regiment",
+    "source": "Nexus on GitHub",
+    "terms": "Nexus · Terms",
+    "privacy": "Privacy",
+    "credits": "Credits",
+    "copyright": "An independent community. Games and artwork belong to their creators."
+  },
+  "legal": {
+    "back": "Back to the community",
+    "eyebrow": "11eNEXUS / INFORMATION",
+    "date": "Effective 1 November 2026",
+    "contact": "Contact NapoSky",
+    "toc": "On this page",
+    "terms": {
+      "title": "Terms of Service",
+      "intro": "These terms cover the official instance of 11eNexus, the 11e community’s Discord bot, and this website. By using the service, you accept these terms.",
+      "sections": [
+        {
+          "title": "The service and its operator",
+          "paragraphs": [
+            "NapoSky operates 11eNexus as a free, non-commercial community project. The bot helps authorised members discover, create or revive game spaces, choose notifications and take part in server events.",
+            "Nexus is independent of Discord, Valve and the publishers of the games shown. Their presence here does not imply a partnership or endorsement."
+          ]
+        },
+        {
+          "title": "Access and rules",
+          "paragraphs": [
+            "You must follow Discord’s Terms of Service and Community Guidelines, the server rules and the minimum age required by Discord and the laws of your country. Member features require the relevant server roles; administration features are restricted to authorised people.",
+            "Installing and configuring the bot requires permission from the server administration. Public source code is not an invitation to install the official instance on another server."
+          ]
+        },
+        {
+          "title": "Acceptable use",
+          "paragraphs": [
+            "Do not use Nexus to harass anyone, post unlawful content, infringe others’ rights, send abusive notifications, bypass permissions or limits, or compromise the service. Do not submit sensitive data in proposals, event descriptions or public issues.",
+            "Quotas and server capacities may limit game creation or revival. Requested notifications remain subject to recipients’ preferences and Discord’s rules."
+          ]
+        },
+        {
+          "title": "Your content and archives",
+          "paragraphs": [
+            "You keep your rights to submitted content and authorise its processing to perform the requested action. Announcements and event descriptions are visible to people with access to the corresponding channels.",
+            "Archiving hides a channel; it does not erase its history. Administrators remain responsible for permissions and moderation. Permanently deleting an archived event requires explicit administrative confirmation.",
+            "The Privacy Policy explains the data we keep and how to exercise your rights."
+          ]
+        },
+        {
+          "title": "Availability, changes and access",
+          "paragraphs": [
+            "The service is provided on a best-effort basis, without an availability commitment. Maintenance, failures, Discord changes and API limits may interrupt it. Features may change.",
+            "Access may be restricted or suspended to protect the community or in response to abuse. Data processing and retention remain subject to the Privacy Policy.",
+            "To the extent permitted by law, the service is provided without warranty and its operator is not liable for indirect losses caused by unavailability. Nothing limits rights or liabilities that cannot legally be limited."
+          ]
+        },
+        {
+          "title": "Support, reports and changes",
+          "paragraphs": [
+            "For questions or abuse reports, contact NapoSky through the repository’s GitHub issues. Issues are public: request a private exchange before sharing personal data or security details. You can also contact the 11e Discord administration directly.",
+            "The date on this page is updated when the terms change. The text and its history are available in the repository. French law governs these terms, without prejudice to mandatory protections in your country."
+          ]
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Privacy Policy",
+      "intro": "This policy covers the official 11eNexus instance and fo.11e-foxhole.com. It describes the bot’s operation; operators of other instances must publish their own policies.",
+      "sections": [
+        {
+          "title": "Controller and contact",
+          "paragraphs": [
+            "NapoSky is responsible for processing by the official instance. The public contact is the repository’s GitHub issues. For a personal request, open an issue without sensitive data to arrange a private exchange, or contact the 11e Discord administration. Do not post your identifier, private messages, tokens or data exports in a public issue."
+          ]
+        },
+        {
+          "title": "Data processed and purposes",
+          "paragraphs": [
+            "The bot receives Discord identifiers for the server, members, roles, channels and interactions. It checks roles and permissions to respond to authorised actions. It stores associations between games, channels, roles and messages it manages, together with notification subscription preferences.",
+            "Game proposals include the author’s identifier, the submitted name and link, language, dates, status and administrative responses. Events retain their name, description, associated game, Discord resources and creation or closure state.",
+            "Temporary sessions and quota timestamps support private navigation and abuse prevention. Audit and operation records contain the action, target, actor identifiers where needed and dates required to recover interrupted operations.",
+            "To assess game activity, Nexus observes human-message timestamps and channel and thread metadata without storing conversation text. It does not request the privileged message content intent, record voice conversations or track game presence."
+          ]
+        },
+        {
+          "title": "Why we process data",
+          "paragraphs": [
+            "Data needed for requested features is processed to provide the service. Permission checks, abuse prevention, security and operation recovery serve the legitimate interest of running a reliable community service. Notifications are optional and can be disabled by removing the relevant role or using Nexus.",
+            "Data is not sold, used for advertising or used to train an artificial intelligence model. Archiving is based on activity in game spaces, without individual member profiling."
+          ]
+        },
+        {
+          "title": "Retention",
+          "paragraphs": [
+            "Open requests expire after 30 days without an update. Closed requests are kept for 30 days after closure. Audit entries, terminal operations and old rate-limit timestamps are cleaned after 30 days. Sessions are removed at expiry.",
+            "Unresolved operations, catalogue associations, import receipts and data needed to operate games and events remain while necessary. Subscription preferences follow Discord roles; manual removals and server departures are taken into account during reconciliation. Legacy records without lifecycle dates have a 30-day transition period from retention activation.",
+            "Channel histories remain on Discord under server and Discord rules. Archiving a game or event does not delete its messages. Backups and technical logs may retain copies; their rotation depends on hosting. NapoSky can explain remaining copies when handling a request; we do not promise instant deletion from every backup."
+          ]
+        },
+        {
+          "title": "Recipients and external services",
+          "paragraphs": [
+            "The operator and authorised administrators access data needed for management and support. Exchanges and publications use Discord under its own Privacy Policy.",
+            "The bot queries RAWG to search titles and retrieve game details and images. The searched game name is sent to RAWG without adding a Discord member identifier. Images are retrieved from artwork providers. The bot runs on the operator’s infrastructure.",
+            "This static website is served by GitHub Pages. Images and fonts are hosted with the site; no Discord or video embed loads automatically. The site adds no cookies, local storage or analytics. GitHub may process connection data, including IP addresses, to serve and secure the site. Following a link to Discord, GitHub or another service opens an environment governed by its own policy. These providers may process data outside your country under their respective safeguards."
+          ]
+        },
+        {
+          "title": "Your rights and security",
+          "paragraphs": [
+            "Subject to applicable law, you may request access, correction, deletion, restriction, objection and, where applicable, portability by contacting NapoSky. Identity verification is limited to what is necessary. Legal exceptions or unresolved operations will be explained if retention remains necessary.",
+            "Disabling notifications does not automatically delete a proposal or audit entry. Leaving the server does not erase messages you posted there; these are also managed by Discord and the server administration.",
+            "You may complain to the CNIL or your competent supervisory authority. Access to the bot and its data is restricted to authorised people; application logs filter secrets, request bodies and raw error messages. If a data breach occurs, required notifications will be made to affected people and authorities."
+          ]
+        },
+        {
+          "title": "Policy changes",
+          "paragraphs": [
+            "The date on this page identifies its version. Changes are preserved in the public repository history. Material changes in processing will be communicated to members through appropriate community channels."
+          ]
+        }
+      ]
+    },
+    "credits": {
+      "title": "Credits & useful links",
+      "intro": "A community website by the 11e. Featured works and trademarks remain the property of their respective rights holders.",
+      "sections": [
+        {
+          "title": "Worlds and artwork",
+          "paragraphs": [
+            "Helldivers 2: Arrowhead Game Studios / Sony Interactive Entertainment. Valheim: Iron Gate / Coffee Stain Publishing. Stellaris: Paradox Interactive. Barotrauma: FakeFish / Undertow Games / Daedalic Entertainment. Deep Rock Galactic: Ghost Ship Games / Coffee Stain Publishing. Promotional artwork comes from public Steam pages and illustrates the community’s games.",
+            "Foxhole: Siege Camp. The regiment image comes from the official 11e website. This site is not affiliated with or endorsed by the publishers. Game artwork is excluded from any source-code licence."
+          ]
+        },
+        {
+          "title": "Typography",
+          "paragraphs": [
+            "Barlow Condensed by Jeremy Tribby and DM Sans by Colophon Foundry are distributed under the SIL Open Font License 1.1. Licence files are included with the locally hosted fonts."
+          ]
+        },
+        {
+          "title": "The catalogue",
+          "paragraphs": [
+            "The catalogue is an editorial selection of games covered by the community on 31 October 2026. It publishes no member identifiers, headcounts, messages or subscriptions. The current-games selection is an editorial snapshot; it does not query Discord live."
+          ]
+        }
+      ]
+    }
+  },
+  "notFound": {
+    "title": "Wrong rallying point.",
+    "body": "This page does not exist. Your team is over here.",
+    "cta": "Back to base camp"
+  }
+}

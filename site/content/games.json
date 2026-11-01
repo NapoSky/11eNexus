@@ -1,0 +1,353 @@
+{
+  "updated": "2026-10-31",
+  "games": [
+    {
+      "name": "Abiotic Factor",
+      "slug": "abiotic-factor",
+      "genre": "survival",
+      "active": false
+    },
+    {
+      "name": "Age of Empires",
+      "slug": "age-of-empires",
+      "genre": "strategy",
+      "active": false
+    },
+    {
+      "name": "Alien Swarm",
+      "slug": "alien-swarm",
+      "genre": "coop",
+      "active": false
+    },
+    {
+      "name": "Among Us",
+      "slug": "among-us",
+      "genre": "action",
+      "active": false
+    },
+    {
+      "name": "Anno",
+      "slug": "anno-series",
+      "genre": "strategy",
+      "active": true
+    },
+    {
+      "name": "Anvil",
+      "slug": "anvil",
+      "genre": "strategy",
+      "active": false
+    },
+    {
+      "name": "ARC Raiders",
+      "slug": "arc-raiders",
+      "genre": "action",
+      "active": false
+    },
+    {
+      "name": "Arma Reforger",
+      "slug": "arma-reforger",
+      "genre": "action",
+      "active": false
+    },
+    {
+      "name": "Barotrauma",
+      "slug": "barotrauma",
+      "genre": "coop",
+      "active": true
+    },
+    {
+      "name": "Battlefield",
+      "slug": "battlefield",
+      "genre": "action",
+      "active": false
+    },
+    {
+      "name": "Broken Arrow",
+      "slug": "broken-arrow",
+      "genre": "strategy",
+      "active": true
+    },
+    {
+      "name": "Call to Arms",
+      "slug": "call-to-arms",
+      "genre": "strategy",
+      "active": false
+    },
+    {
+      "name": "Civilization",
+      "slug": "civilization",
+      "genre": "strategy",
+      "active": false
+    },
+    {
+      "name": "Company of Heroes",
+      "slug": "company-of-heroes",
+      "genre": "strategy",
+      "active": true
+    },
+    {
+      "name": "Crusader Kings",
+      "slug": "crusader-kings",
+      "genre": "strategy",
+      "active": false
+    },
+    {
+      "name": "Darktide",
+      "slug": "darktide",
+      "genre": "coop",
+      "active": false
+    },
+    {
+      "name": "Deep Rock Galactic",
+      "slug": "deep-rock-galactic",
+      "genre": "coop",
+      "active": false
+    },
+    {
+      "name": "Dune Awakening",
+      "slug": "dune-awakening",
+      "genre": "survival",
+      "active": false
+    },
+    {
+      "name": "Eco",
+      "slug": "eco",
+      "genre": "survival",
+      "active": true
+    },
+    {
+      "name": "Elite Dangerous",
+      "slug": "elite-dangerous",
+      "genre": "space",
+      "active": true
+    },
+    {
+      "name": "Enlisted",
+      "slug": "enlisted",
+      "genre": "action",
+      "active": true
+    },
+    {
+      "name": "Europa Universalis V",
+      "slug": "europa-universalis-v",
+      "genre": "strategy",
+      "active": true
+    },
+    {
+      "name": "Factorio",
+      "slug": "factorio",
+      "genre": "strategy",
+      "active": false
+    },
+    {
+      "name": "GTFO",
+      "slug": "gtfo",
+      "genre": "coop",
+      "active": false
+    },
+    {
+      "name": "Hearts of Iron IV",
+      "slug": "hearts-of-iron-iv",
+      "genre": "strategy",
+      "active": false
+    },
+    {
+      "name": "Helldivers 2",
+      "slug": "helldivers-2",
+      "genre": "coop",
+      "active": true
+    },
+    {
+      "name": "Humankind",
+      "slug": "humankind",
+      "genre": "strategy",
+      "active": false
+    },
+    {
+      "name": "Icarus",
+      "slug": "icarus",
+      "genre": "survival",
+      "active": false
+    },
+    {
+      "name": "Intruder",
+      "slug": "intruder",
+      "genre": "action",
+      "active": false
+    },
+    {
+      "name": "League of Legends",
+      "slug": "league-of-legends",
+      "genre": "strategy",
+      "active": false
+    },
+    {
+      "name": "Lethal Company",
+      "slug": "lethal-company",
+      "genre": "coop",
+      "active": false
+    },
+    {
+      "name": "Minecraft",
+      "slug": "minecraft",
+      "genre": "survival",
+      "active": false
+    },
+    {
+      "name": "Monster Hunter",
+      "slug": "monster-hunter",
+      "genre": "coop",
+      "active": false
+    },
+    {
+      "name": "NEBULOUS: Fleet Command",
+      "slug": "nebulous-fleet-command",
+      "genre": "space",
+      "active": false
+    },
+    {
+      "name": "Northgard",
+      "slug": "northgard",
+      "genre": "strategy",
+      "active": false
+    },
+    {
+      "name": "Of Guards And Thieves",
+      "slug": "of-guards-and-thieves",
+      "genre": "coop",
+      "active": false
+    },
+    {
+      "name": "PEAK",
+      "slug": "peak",
+      "genre": "coop",
+      "active": false
+    },
+    {
+      "name": "Phasmophobia",
+      "slug": "phasmophobia",
+      "genre": "coop",
+      "active": false
+    },
+    {
+      "name": "Project Zomboid",
+      "slug": "project-zomboid",
+      "genre": "survival",
+      "active": true
+    },
+    {
+      "name": "R.E.P.O.",
+      "slug": "repo",
+      "genre": "coop",
+      "active": true
+    },
+    {
+      "name": "Ready or Not",
+      "slug": "ready-or-not",
+      "genre": "coop",
+      "active": false
+    },
+    {
+      "name": "Sea of Thieves",
+      "slug": "sea-of-thieves",
+      "genre": "action",
+      "active": false
+    },
+    {
+      "name": "Space Engineers",
+      "slug": "space-engineers",
+      "genre": "space",
+      "active": false
+    },
+    {
+      "name": "Star Citizen",
+      "slug": "star-citizen",
+      "genre": "space",
+      "active": true
+    },
+    {
+      "name": "Stellaris",
+      "slug": "stellaris",
+      "genre": "strategy",
+      "active": true
+    },
+    {
+      "name": "Supremacy 1914",
+      "slug": "supremacy-1914",
+      "genre": "strategy",
+      "active": true
+    },
+    {
+      "name": "Tabletop Simulator",
+      "slug": "tabletop-simulator",
+      "genre": "coop",
+      "active": true
+    },
+    {
+      "name": "Total War: Warhammer",
+      "slug": "total-war-warhammer",
+      "genre": "strategy",
+      "active": true
+    },
+    {
+      "name": "Valheim",
+      "slug": "valheim",
+      "genre": "survival",
+      "active": true
+    },
+    {
+      "name": "Victoria 3",
+      "slug": "victoria-3",
+      "genre": "strategy",
+      "active": false
+    },
+    {
+      "name": "Vintage Story",
+      "slug": "vintage-story",
+      "genre": "survival",
+      "active": true
+    },
+    {
+      "name": "War Thunder",
+      "slug": "war-thunder",
+      "genre": "action",
+      "active": false
+    },
+    {
+      "name": "Wardogs",
+      "slug": "wardogs",
+      "genre": "action",
+      "active": true
+    },
+    {
+      "name": "Warframe",
+      "slug": "warframe",
+      "genre": "coop",
+      "active": true
+    },
+    {
+      "name": "Warhammer 40,000: Space Marine 2",
+      "slug": "space-marine-2",
+      "genre": "coop",
+      "active": false
+    },
+    {
+      "name": "World of Tanks",
+      "slug": "world-of-tanks",
+      "genre": "action",
+      "active": false
+    },
+    {
+      "name": "World of Warships",
+      "slug": "world-of-warships",
+      "genre": "action",
+      "active": false
+    },
+    {
+      "name": "Ymir",
+      "slug": "ymir",
+      "genre": "strategy",
+      "active": false
+    }
+  ]
+}
