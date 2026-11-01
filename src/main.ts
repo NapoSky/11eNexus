@@ -8,6 +8,7 @@ import { languagesReady } from './presentation/i18n.js';
 import { logger } from './infrastructure/logger.js';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { ActiveChannelOrder } from './infrastructure/active-channel-order.js';
+import { GameRoleOrder } from './infrastructure/game-role-order.js';
 import { Shutdown } from './infrastructure/shutdown.js';
 import { imageWork } from './infrastructure/image-work.js';
 import { GuildRestriction } from './infrastructure/guild-restriction.js';
@@ -35,6 +36,11 @@ async function main(): Promise<void> {
       }),
   );
   const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+  const roleOrder = new GameRoleOrder(client, settings.guildId, () =>
+    app.nexus.mutex.run(async () => {
+      if (!shutdown.stopping && client.isReady()) await app.gateway.sortGameRoles();
+    }),
+  );
   const eventOrder = new ActiveChannelOrder(
     client,
     settings.guildId,
@@ -105,6 +111,7 @@ async function main(): Promise<void> {
     drain: () => [
       guildRestriction.drain(),
       channelOrder.stop(),
+      roleOrder.stop(),
       eventOrder.stop(),
       syncing,
       app.controller.drain(),
@@ -132,6 +139,7 @@ async function main(): Promise<void> {
   guildRestriction.listen();
   app.controller.listen();
   channelOrder.listen();
+  roleOrder.listen();
   eventOrder.listen();
   const stopActivity = app.gateway.onActivity((id, at) => app.nexus.recordActivity(id, at));
   const synchronize = async () => {
@@ -147,6 +155,7 @@ async function main(): Promise<void> {
       await app.controller.events.synchronize(backgroundReads.signal);
       if (shutdown.stopping) return;
       channelOrder.request();
+      roleOrder.request();
       eventOrder.request();
       await app.nexus.deliverNewGameAnnouncements(backgroundReads.signal);
       if (shutdown.stopping) return;

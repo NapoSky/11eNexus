@@ -36,6 +36,7 @@ import { discordAttachment } from './images.js';
 import { logger } from './logger.js';
 import { createHash } from 'node:crypto';
 import { activeChannelPositions } from './active-channel-order.js';
+import { gameRolePositions } from './game-role-order.js';
 
 export function discordClient(): Client {
   return new Client({
@@ -57,6 +58,30 @@ export class DiscordCommunity implements Community {
   ) {}
   async guild(): Promise<Guild> {
     return this.client.guilds.fetch(this.config.guildId);
+  }
+  async sortGameRoles(apply = true): Promise<{ role: string; name: string; position: number }[]> {
+    const guild = await this.guild();
+    const [roles, me] = await Promise.all([guild.roles.fetch(), guild.members.fetchMe()]);
+    const positions = gameRolePositions([...roles.values()], guild.id);
+    if (!positions.length) return [];
+    const moved = positions.filter((p) => p.position !== roles.get(p.role)!.position);
+    if (
+      !me.permissions.has(P.ManageRoles) ||
+      moved.some((p) => !roles.get(p.role)?.editable || p.position >= me.roles.highest.position)
+    )
+      throw new DomainError('needsReview');
+    const changes = moved.map((p) => ({ ...p, name: roles.get(p.role)!.name }));
+    if (apply) {
+      await guild.roles.setPositions(positions);
+      const actual = await guild.roles.fetch();
+      if (
+        actual.size !== positions.length ||
+        positions.some((p) => actual.get(p.role)?.position !== p.position)
+      )
+        throw new DomainError('needsReview');
+      logger.info({ event: 'game_roles_sorted', roles: moved.length });
+    }
+    return changes;
   }
   async sortActiveGameChannels(): Promise<void> {
     const guild = await this.guild();

@@ -45,7 +45,7 @@ async function main(): Promise<void> {
   const command = process.argv[2];
   if (!command || command === 'help') {
     console.info(
-      '11eNexus admin: doctor | audit --output FILE [--role-marker ID] [--categories ID,ID] [--locale fr|en] | inventory --output FILE | prepare --inventory FILE --output FILE [--rawg] [--locale fr|en] | plan --manifest FILE --output FILE | apply --plan FILE --apply | role-mentions [--apply] | setup [--channel ID] [--admin-channel ID] | backup --output FILE',
+      '11eNexus admin: doctor | audit --output FILE [--role-marker ID] [--categories ID,ID] [--locale fr|en] | inventory --output FILE | prepare --inventory FILE --output FILE [--rawg] [--locale fr|en] | plan --manifest FILE --output FILE | apply --plan FILE --apply | role-order [--apply] | role-mentions [--apply] | setup [--channel ID] [--admin-channel ID] | backup --output FILE',
     );
     return;
   }
@@ -124,7 +124,7 @@ async function main(): Promise<void> {
   const owner = randomUUID();
   const mutation =
     ['setup', 'apply'].includes(command) ||
-    (command === 'role-mentions' && process.argv.includes('--apply'));
+    (['role-mentions', 'role-order'].includes(command) && process.argv.includes('--apply'));
   let leased = false;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   try {
@@ -145,6 +145,13 @@ async function main(): Promise<void> {
       app.client.login(app.settings.token),
     ]);
     stage = command;
+    if (command === 'role-order') {
+      const apply = process.argv.includes('--apply');
+      console.info(
+        JSON.stringify({ apply, changes: await app.gateway.sortGameRoles(apply) }, null, 2),
+      );
+      return;
+    }
     if (command === 'audit') {
       const target = option('output') || 'data/resource-audit.json';
       const language = option('locale') || 'fr';

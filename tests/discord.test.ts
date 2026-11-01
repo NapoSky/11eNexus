@@ -11,6 +11,7 @@ import {
 } from 'discord.js';
 import { DiscordCommunity, discordClient } from '../src/infrastructure/discord.js';
 import { config } from '../src/infrastructure/config.js';
+import { GAME_ROLE_MARKER } from '../src/application/resource-audit.js';
 import { archiveId, asset, fixture, game, member, now } from './helpers.js';
 
 let f: ReturnType<typeof fixture>;
@@ -33,6 +34,82 @@ test('the gateway never requests message content intent', () => {
   expect(client.options.intents.has(GatewayIntentBits.GuildMembers)).toBe(true);
   expect(client.options.intents.has(GatewayIntentBits.MessageContent)).toBe(false);
 });
+test('game role sorting previews without writes, preserves integration slots, then becomes idempotent', async () => {
+  const r = (id: string, name: string, position: number, managed = false) => ({
+    id,
+    name,
+    position,
+    managed,
+    editable: !managed,
+  });
+  const roles = new Collection([
+    ['1', r('1', 'Zulu', 3)],
+    ['2', r('2', 'Alpha', 1)],
+    ['3', r('3', 'Bot', 2, true)],
+    [GAME_ROLE_MARKER, r(GAME_ROLE_MARKER, 'Marker', 4)],
+  ]);
+  const setPositions = jest.fn(async (positions: { role: string; position: number }[]) => {
+    for (const p of positions) roles.get(p.role)!.position = p.position;
+  });
+  jest.spyOn(gateway, 'guild').mockResolvedValue({
+    id: gateway.config.guildId,
+    roles: { fetch: async () => roles, setPositions },
+    members: {
+      fetchMe: async () => ({
+        permissions: { has: () => true },
+        roles: { highest: { position: 10 } },
+      }),
+    },
+  } as unknown as Guild);
+  expect(await gateway.sortGameRoles(false)).toEqual([
+    { role: '1', name: 'Zulu', position: 1 },
+    { role: '2', name: 'Alpha', position: 3 },
+  ]);
+  expect(setPositions).not.toHaveBeenCalled();
+  await gateway.sortGameRoles();
+  expect(setPositions).toHaveBeenCalledWith([
+    { role: '1', position: 1 },
+    { role: '3', position: 2 },
+    { role: '2', position: 3 },
+    { role: GAME_ROLE_MARKER, position: 4 },
+  ]);
+  await gateway.sortGameRoles();
+  expect(setPositions).toHaveBeenCalledTimes(1);
+  expect(roles.get('3')!.position).toBe(2);
+  expect(roles.get(GAME_ROLE_MARKER)!.position).toBe(4);
+});
+test.each(['permission', 'hierarchy', 'uneditable', 'marker'])(
+  'game role sorting refuses unsafe %s before writing',
+  async (failure) => {
+    const roles = new Collection([
+      [
+        '1',
+        { id: '1', name: 'Zulu', position: 2, managed: false, editable: failure !== 'uneditable' },
+      ],
+      ['2', { id: '2', name: 'Alpha', position: 1, managed: false, editable: true }],
+      [
+        GAME_ROLE_MARKER,
+        { id: GAME_ROLE_MARKER, name: 'Marker', position: 3, managed: false, editable: true },
+      ],
+    ]);
+    if (failure === 'marker') roles.delete(GAME_ROLE_MARKER);
+    const setPositions = jest.fn();
+    jest.spyOn(gateway, 'guild').mockResolvedValue({
+      id: gateway.config.guildId,
+      roles: { fetch: async () => roles, setPositions },
+      members: {
+        fetchMe: async () => ({
+          permissions: { has: () => failure !== 'permission' },
+          roles: { highest: { position: failure === 'hierarchy' ? 2 : 10 } },
+        }),
+      },
+    } as unknown as Guild);
+    await expect(gateway.sortGameRoles()).rejects.toMatchObject({
+      code: failure === 'marker' ? 'configuration' : 'needsReview',
+    });
+    expect(setPositions).not.toHaveBeenCalled();
+  },
+);
 test('active ordering includes untracked forums, changes only positions and skips an already sorted category', async () => {
   const active = gateway.config.activeCategoryId;
   const permissionsFor = () => ({ has: () => true });
