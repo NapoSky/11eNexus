@@ -323,6 +323,15 @@ h3 {
 .hero h1 > span {
   color: var(--text);
 }
+.hero h1 .hero-identity {
+  display: block;
+  margin-bottom: 24px;
+  color: var(--accent);
+  font:
+    700 10px/1.5 'DM Sans',
+    sans-serif;
+  letter-spacing: 0.2em;
+}
 .hero-description {
   max-width: 440px;
   font-size: 15px;
@@ -733,6 +742,9 @@ h2 {
   color: #aab8cf;
 }
 .catalogue-grid {
+  margin: 0;
+  padding: 0;
+  list-style: none;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   column-gap: 28px;
@@ -967,6 +979,56 @@ h2 {
 }
 .back-link:hover {
   color: var(--accent);
+}
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 40px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.breadcrumbs .back-link {
+  margin-bottom: 0;
+}
+.faq {
+  border-bottom: 1px solid var(--line);
+}
+.faq-list {
+  max-width: 960px;
+}
+.faq-list details {
+  border-top: 1px solid var(--line);
+}
+.faq-list details:last-child {
+  border-bottom: 1px solid var(--line);
+}
+.faq-list summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 21px 0;
+  list-style: none;
+  font-size: 15px;
+}
+.faq-list summary::-webkit-details-marker {
+  display: none;
+}
+.faq-list summary span {
+  color: var(--accent);
+  font-size: 24px;
+}
+.faq-list details[open] summary span {
+  transform: rotate(45deg);
+}
+.faq-list details p {
+  max-width: 760px;
+  padding-bottom: 25px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.9;
 }
 .legal-page h1 {
   font-size: clamp(48px, 5.7vw, 80px);
@@ -1388,6 +1450,10 @@ h2 {
   .hero .eyebrow {
     font-size: 7px;
     letter-spacing: 0.14em;
+  }
+  .hero h1 .hero-identity {
+    font-size: 8px;
+    letter-spacing: 0.1em;
   }
   .tiny-cross {
     font-size: 18px;

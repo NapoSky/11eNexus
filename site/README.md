@@ -16,6 +16,24 @@ Ouvrir `http://localhost:4173`. `site/dist/` est généré et ignoré par Git. L
 
 Les textes sont dans `locales/fr.json` et `locales/en.json`. Les deux langues ont les mêmes rubriques. Les traductions du bot dans `src/locales/` restent indépendantes : une modification du bot ne doit pas déclencher la publication du site.
 
+## Structure de la landing et SEO
+
+`pages/landing.mjs` compose les sections indépendantes de `sections/` : introduction, chiffres du catalogue, communauté, jeux mis en avant, catalogue, origines Foxhole, FAQ et invitation. `components/` contient la navigation et le document HTML partagé. `lib/routes.mjs` définit les routes FR/EN ; `lib/seo.mjs` centralise les titres, descriptions, URL canoniques, alternatives linguistiques et données structurées. Le build reste statique, sans dépendance à installer.
+
+Les titres et les textes présentent explicitement le 11e comme une communauté gaming FR/EN sur Discord. Le catalogue complet et les réponses de la FAQ sont présents dans le HTML, même sans JavaScript. Les jeux utilisent une liste native et des ancres stables ; la navigation par filtres ne génère pas de pages de résultats à indexer. Les textes, les images et les informations structurées décrivent les mêmes jeux et la même communauté.
+
+Chaque page normale a un titre et une description distincts, une URL canonique HTTPS, des liens `hreflang` réciproques FR/EN et `x-default`. Le sitemap XML reprend ces variantes ; `robots.txt` autorise leur exploration. Les pages d’erreur ont `noindex` et n’annoncent ni URL canonique d’accueil ni données structurées de contenu. Les pages légales conservent leurs URL et leurs textes, avec un fil d’Ariane visible.
+
+Le JSON-LD décrit uniquement des faits présents sur le site : `Organization`, `WebSite`, `WebPage`, catalogue `ItemList` et fils d’Ariane `BreadcrumbList`. Aucune note, statistique de membres, offre, événement daté ou action de recherche externe n’est inventé. La FAQ est utile aux visiteurs ; elle ne revendique pas de résultat enrichi FAQ dans Google. Le logo et les cartes de partage FR/EN sont exportés dans `assets/social/` aux dimensions déclarées dans les métadonnées Open Graph et Twitter.
+
+Le premier visuel est chargé immédiatement avec priorité haute ; les autres univers du bandeau ne sont chargés qu’à la sélection. Les images secondaires restent différées et disposent de dimensions explicites. Les images porteuses de contenu ont une alternative ; les décors restent ignorés des lecteurs d’écran. Les polices sont locales et les fichiers CSS, JS et SVG sont référencés par leur empreinte de contenu pour renouveler le cache après une modification. Les pages légales fonctionnent sans charger le JavaScript de la landing.
+
+`scripts/check.mjs` vérifie ces invariants dans l’artefact généré : unicité des métadonnées, cohérence des langues et du sitemap, JSON-LD, catalogue statique, liens, erreurs non indexables, alternatives d’images et empreintes des fichiers. Ces contrôles vérifient le code livré ; ils ne mesurent pas un classement dans les résultats de recherche.
+
+Pour régénérer les images de partage après un changement d’identité graphique : installer les dépendances habituelles du dépôt, puis exécuter `node site/scripts/generate-social-assets.mjs`. Cet outil d’édition utilise Sharp et les polices locales, dans un cache temporaire. Les exports sont versionnés ; la CI du site les copie sans installer Sharp ni les dépendances du bot.
+
+Références de conception : [guide SEO de Google](https://developers.google.com/search/docs/fundamentals/seo-starter-guide), [versions linguistiques](https://developers.google.com/search/docs/specialty/international/localized-versions), [nom du site](https://developers.google.com/search/docs/appearance/site-names), [organisation](https://developers.google.com/search/docs/appearance/structured-data/organization), [images](https://developers.google.com/search/docs/appearance/google-images) et [sitemaps](https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap).
+
 ## Catalogue et visuels
 
 `content/games.json` contient uniquement les titres publics, slugs éditoriaux, genres et choix « du moment ». La photographie initiale du 31 octobre 2026 couvre 58 jeux. Eco est présenté parmi les jeux du moment, car son forum communautaire actif existe indépendamment du salon historique archivé. Aucun identifiant Discord, effectif ni abonnement n’est publié.

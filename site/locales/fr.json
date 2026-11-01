@@ -1,7 +1,7 @@
 {
   "lang": "fr",
-  "title": "Le 11e — D’autres mondes. La même équipe.",
-  "description": "Née sur Foxhole, la communauté du 11e se retrouve sur des jeux de coopération, de survie, de stratégie et bien au-delà. Trouve ta prochaine équipe.",
+  "title": "11e Multigaming — Communauté gaming FR/EN sur Discord",
+  "description": "Rejoins le Discord multigaming du 11e : une communauté FR/EN née sur Foxhole, réunie autour de jeux coopératifs, de survie et de stratégie.",
   "skip": "Aller au contenu",
   "brand": "LA COMMUNAUTÉ MULTIGAMING",
   "nav": {
@@ -9,13 +9,14 @@
     "games": "Nos jeux",
     "foxhole": "Nos origines",
     "join": "Rejoindre le Discord",
-    "menu": "Ouvrir le menu"
+    "menu": "Ouvrir le menu",
+    "faq": "Questions"
   },
   "hero": {
-    "eyebrow": "NÉS SUR FOXHOLE. RÉUNIS PARTOUT.",
+    "eyebrow": "LE 11e MULTIGAMING · COMMUNAUTÉ FR/EN",
     "line1": "D’AUTRES MONDES.",
     "line2": "LA MÊME ÉQUIPE.",
-    "body": "Un dernier assaut. Une nouvelle colonie. Une expédition qui dérape. Les jeux changent, le plaisir de jouer ensemble reste.",
+    "body": "Née sur Foxhole, notre communauté gaming se retrouve sur Discord pour jouer en coopération, survivre, bâtir et explorer d’autres univers. Les jeux changent, le plaisir de jouer ensemble reste.",
     "primary": "Trouve ta prochaine équipe",
     "secondary": "Explorer nos jeux",
     "caption": "PROCHAINE ESCALE",
@@ -32,7 +33,7 @@
   "community": {
     "eyebrow": "01 / L’ESPRIT 11e",
     "title": "On vient pour un jeu.\nOn reste pour les gens.",
-    "body": "Au 11e, on aime les plans bien préparés autant que les soirées qui partent complètement de travers. Notre point commun, c’est l’envie de partager la partie.",
+    "body": "Le 11e, c’est une communauté de joueurs francophones et anglophones réunis sur Discord. On aime les plans bien préparés autant que les soirées qui dérapent, les parties coopératives et les coups de main entre joueurs.",
     "items": [
       {
         "number": "01",
@@ -53,8 +54,8 @@
   },
   "featured": {
     "eyebrow": "02 / CHANGE DE TERRAIN",
-    "title": "Ce soir, on joue à quoi ?",
-    "body": "Quelques univers où retrouver le 11e. Le prochain départ se prépare sur Discord.",
+    "title": "Coopération, survie, stratégie : à toi de jouer.",
+    "body": "Retrouve des joueurs de Helldivers 2, Valheim, Stellaris ou Barotrauma sur le Discord multigaming du 11e. Explore le catalogue pour découvrir les autres jeux de la communauté.",
     "link": "Voir tout le catalogue",
     "discover": "Retrouver les joueurs",
     "cards": [
@@ -62,31 +63,35 @@
         "slug": "helldivers-2",
         "name": "Helldivers 2",
         "genre": "COOPÉRATION / CHAOS ORGANISÉ",
-        "line": "La démocratie attend ton escouade."
+        "line": "Des missions coopératives en escouade, où coordination et entraide font la différence.",
+        "imageAlt": "Visuel promotionnel de Helldivers 2"
       },
       {
         "slug": "valheim",
         "name": "Valheim",
         "genre": "SURVIE / CONSTRUCTION",
-        "line": "Une cabane. Puis tout un royaume."
+        "line": "Survie coopérative, exploration et construction : bâtis une aventure avec la communauté.",
+        "imageAlt": "Un aventurier de Valheim dans une forêt"
       },
       {
         "slug": "stellaris",
         "name": "Stellaris",
         "genre": "STRATÉGIE / GRANDES AMBITIONS",
-        "line": "Nos frontières ? La prochaine galaxie."
+        "line": "Stratégie spatiale, diplomatie et parties multijoueurs à préparer ensemble.",
+        "imageAlt": "Paysage extraterrestre de Stellaris"
       },
       {
         "slug": "barotrauma",
         "name": "Barotrauma",
         "genre": "COOPÉRATION / EAUX TROUBLES",
-        "line": "Tout va bien. Enfin, presque."
+        "line": "Coopération en sous-marin, gestion de l’équipage et expéditions sous haute pression.",
+        "imageAlt": "Visuel promotionnel de Barotrauma"
       }
     ]
   },
   "catalogue": {
     "eyebrow": "03 / NOTRE TERRAIN DE JEU",
-    "title": "De quoi changer d’horizon.",
+    "title": "Les jeux de la communauté du 11e.",
     "body": "Des jeux du moment aux aventures à relancer, retrouve les univers de la communauté.",
     "active": "Du moment",
     "all": "Tous les jeux",
@@ -103,7 +108,8 @@
       "space": "Espace & exploration",
       "action": "Action & multijoueur"
     },
-    "onDiscord": "Retrouve ce jeu sur le Discord du 11e"
+    "onDiscord": "Retrouve ce jeu sur le Discord du 11e",
+    "countOne": "jeu à explorer"
   },
   "origins": {
     "eyebrow": "04 / NOS ORIGINES",
@@ -184,7 +190,8 @@
             "La date de cette page est actualisée en cas de modification. Le texte et son historique sont disponibles dans le dépôt. Ces conditions relèvent du droit français, sans préjudice des protections impératives applicables dans ton pays."
           ]
         }
-      ]
+      ],
+      "description": "Conditions d’utilisation de 11eNexus, le bot Discord du 11e : accès au service, règles, contenus, disponibilité et contact NapoSky."
     },
     "privacy": {
       "title": "Politique de confidentialité",
@@ -242,7 +249,8 @@
             "La date de cette page indique sa version. Les changements sont conservés dans l’historique public du dépôt. Les modifications importantes du traitement seront portées à la connaissance des membres par les moyens communautaires appropriés."
           ]
         }
-      ]
+      ],
+      "description": "Données traitées par 11eNexus et le site du 11e : finalités, conservation, services externes, droits et contact NapoSky."
     },
     "credits": {
       "title": "Crédits & liens utiles",
@@ -267,12 +275,45 @@
             "Le catalogue est une sélection éditoriale issue des jeux couverts par la communauté au 31 octobre 2026. Il ne publie aucun identifiant, effectif, message ou abonnement de membre. La sélection « du moment » est une photographie éditoriale ; elle ne consulte pas Discord en direct."
           ]
         }
-      ]
+      ],
+      "description": "Crédits du site 11e Multigaming : visuels des jeux, sources, typographies libres et présentation du catalogue communautaire."
     }
   },
   "notFound": {
     "title": "Mauvais point de ralliement.",
     "body": "Cette page n’existe pas. L’équipe est par ici.",
     "cta": "Retour au camp de base"
+  },
+  "seo": {
+    "home": "11e Multigaming",
+    "breadcrumb": "Fil d’Ariane",
+    "imageAlt": "11e Multigaming — une communauté gaming FR/EN sur Discord, née sur Foxhole."
+  },
+  "faq": {
+    "eyebrow": "05 / AVANT DE NOUS REJOINDRE",
+    "title": "Une communauté gaming, simplement.",
+    "body": "Quelques repères pour trouver des joueurs et rejoindre l’aventure sur Discord.",
+    "items": [
+      {
+        "question": "Comment rejoindre le Discord multigaming du 11e ?",
+        "answer": "Utilise le bouton « Rejoindre le Discord » de cette page, consulte le règlement et présente-toi à la communauté. Le serveur précise ses conditions d’accès et l’équipe peut t’orienter vers les espaces de jeu."
+      },
+      {
+        "question": "Le 11e joue-t-il uniquement à Foxhole ?",
+        "answer": "La communauté s’est construite sur Foxhole, mais ses joueurs se retrouvent aussi sur de nombreux autres jeux. Coopération, survie, stratégie et exploration ont leur place sur notre Discord multigaming."
+      },
+      {
+        "question": "Quels jeux peut-on retrouver dans la communauté ?",
+        "answer": "Le catalogue comprend notamment Helldivers 2, Valheim, Stellaris, Barotrauma, Project Zomboid et Star Citizen. La sélection « Du moment » est datée ; retrouve les envies et l’activité actuelle des joueurs sur Discord."
+      },
+      {
+        "question": "Peut-on rejoindre la communauté en français ou en anglais ?",
+        "answer": "Le 11e rassemble des joueurs francophones et anglophones. Le site et le bot Nexus proposent des parcours en français et en anglais pour aider chacun à retrouver ses jeux et ses notifications."
+      },
+      {
+        "question": "Comment retrouver les joueurs d’un jeu et choisir ses notifications ?",
+        "answer": "Une fois les accès du serveur obtenus, utilise Nexus sur Discord pour explorer le catalogue et retrouver les salons de jeux. Les notifications sont facultatives : tu choisis les jeux que tu souhaites suivre et tu peux retirer ces abonnements."
+      }
+    ]
   }
 }

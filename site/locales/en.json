@@ -1,7 +1,7 @@
 {
   "lang": "en",
-  "title": "The 11e — Different worlds. Same team.",
-  "description": "Born in Foxhole, the 11e community comes together across co-op, survival, strategy games and beyond. Find your next team.",
+  "title": "11e Multigaming — FR/EN Gaming Community on Discord",
+  "description": "Join the 11e multigaming Discord: a French and English-speaking community born in Foxhole, playing co-op, survival and strategy games together.",
   "skip": "Skip to content",
   "brand": "THE MULTIGAMING COMMUNITY",
   "nav": {
@@ -9,13 +9,14 @@
     "games": "Our games",
     "foxhole": "Our roots",
     "join": "Join our Discord",
-    "menu": "Open navigation"
+    "menu": "Open navigation",
+    "faq": "FAQ"
   },
   "hero": {
-    "eyebrow": "BORN IN FOXHOLE. TOGETHER EVERYWHERE.",
+    "eyebrow": "11e MULTIGAMING · FR/EN GAMING COMMUNITY",
     "line1": "DIFFERENT WORLDS.",
     "line2": "SAME TEAM.",
-    "body": "One last assault. A new colony. An expedition gone sideways. The games change. The joy of playing together stays.",
+    "body": "Born in Foxhole, our gaming community meets on Discord to play co-op, survive, build and explore other worlds. The games change. The joy of playing together stays.",
     "primary": "Find your next team",
     "secondary": "Explore our games",
     "caption": "NEXT DESTINATION",
@@ -32,7 +33,7 @@
   "community": {
     "eyebrow": "01 / THE 11e SPIRIT",
     "title": "Come for a game.\nStay for the people.",
-    "body": "At the 11e, we love a well-laid plan as much as a night that goes completely off the rails. What brings us together is sharing the game.",
+    "body": "The 11e brings French and English-speaking gamers together on Discord. We love a well-laid plan as much as a night that goes off the rails, cooperative sessions and helping each other along the way.",
     "items": [
       {
         "number": "01",
@@ -53,8 +54,8 @@
   },
   "featured": {
     "eyebrow": "02 / A CHANGE OF SCENERY",
-    "title": "What are we playing tonight?",
-    "body": "A few worlds where you can find the 11e. The next adventure starts on Discord.",
+    "title": "Co-op, survival, strategy: find your next game.",
+    "body": "Find Helldivers 2, Valheim, Stellaris and Barotrauma players on the 11e multigaming Discord. Explore the catalogue to discover the community’s other games.",
     "link": "Explore the full catalogue",
     "discover": "Find the players",
     "cards": [
@@ -62,31 +63,35 @@
         "slug": "helldivers-2",
         "name": "Helldivers 2",
         "genre": "CO-OP / ORGANISED CHAOS",
-        "line": "Democracy is waiting for your squad."
+        "line": "Cooperative squad missions where coordination and helping each other make the difference.",
+        "imageAlt": "Helldivers 2 promotional artwork"
       },
       {
         "slug": "valheim",
         "name": "Valheim",
         "genre": "SURVIVAL / BUILDING",
-        "line": "First a cabin. Then a whole kingdom."
+        "line": "Co-op survival, exploration and building: create a new adventure with the community.",
+        "imageAlt": "A Valheim adventurer in a forest"
       },
       {
         "slug": "stellaris",
         "name": "Stellaris",
         "genre": "STRATEGY / GRAND AMBITIONS",
-        "line": "Our borders? The next galaxy."
+        "line": "Space strategy, diplomacy and multiplayer campaigns to plan together.",
+        "imageAlt": "An alien landscape from Stellaris"
       },
       {
         "slug": "barotrauma",
         "name": "Barotrauma",
         "genre": "CO-OP / TROUBLED WATERS",
-        "line": "Everything is fine. More or less."
+        "line": "Submarine co-op, crew management and expeditions under pressure.",
+        "imageAlt": "Barotrauma promotional artwork"
       }
     ]
   },
   "catalogue": {
     "eyebrow": "03 / OUR PLAYGROUND",
-    "title": "A whole world of possibilities.",
+    "title": "Explore the 11e community’s games.",
     "body": "From current favourites to adventures worth revisiting, explore the community’s games.",
     "active": "Of the moment",
     "all": "All games",
@@ -103,7 +108,8 @@
       "space": "Space & exploration",
       "action": "Action & multiplayer"
     },
-    "onDiscord": "Find this game on the 11e Discord"
+    "onDiscord": "Find this game on the 11e Discord",
+    "countOne": "game to explore"
   },
   "origins": {
     "eyebrow": "04 / OUR ROOTS",
@@ -184,7 +190,8 @@
             "The date on this page is updated when the terms change. The text and its history are available in the repository. French law governs these terms, without prejudice to mandatory protections in your country."
           ]
         }
-      ]
+      ],
+      "description": "Terms of Service for 11eNexus, the 11e Discord bot: access, acceptable use, content, availability and contact with NapoSky."
     },
     "privacy": {
       "title": "Privacy Policy",
@@ -242,7 +249,8 @@
             "The date on this page identifies its version. Changes are preserved in the public repository history. Material changes in processing will be communicated to members through appropriate community channels."
           ]
         }
-      ]
+      ],
+      "description": "How 11eNexus and the 11e website process data: purposes, retention, external services, your rights and contact with NapoSky."
     },
     "credits": {
       "title": "Credits & useful links",
@@ -267,12 +275,45 @@
             "The catalogue is an editorial selection of games covered by the community on 31 October 2026. It publishes no member identifiers, headcounts, messages or subscriptions. The current-games selection is an editorial snapshot; it does not query Discord live."
           ]
         }
-      ]
+      ],
+      "description": "Credits for 11e Multigaming: game artwork, sources, open-licensed fonts and the community game catalogue."
     }
   },
   "notFound": {
     "title": "Wrong rallying point.",
     "body": "This page does not exist. Your team is over here.",
     "cta": "Back to base camp"
+  },
+  "seo": {
+    "home": "11e Multigaming",
+    "breadcrumb": "Breadcrumb",
+    "imageAlt": "11e Multigaming — a French and English-speaking gaming community on Discord, born in Foxhole."
+  },
+  "faq": {
+    "eyebrow": "05 / BEFORE YOU JOIN",
+    "title": "A gaming community. A place to belong.",
+    "body": "A few pointers to find players and start your next adventure on Discord.",
+    "items": [
+      {
+        "question": "How do I join the 11e multigaming Discord?",
+        "answer": "Use the “Join our Discord” button on this page, read the server rules and introduce yourself to the community. The server explains its access requirements, and the team can help you find your game spaces."
+      },
+      {
+        "question": "Does the 11e only play Foxhole?",
+        "answer": "Our community started in Foxhole, but its players also meet across many other games. Co-op, survival, strategy and exploration all have a place on our multigaming Discord."
+      },
+      {
+        "question": "Which games can I find in the community?",
+        "answer": "The catalogue includes Helldivers 2, Valheim, Stellaris, Barotrauma, Project Zomboid and Star Citizen, among others. The current-games selection is dated; find players’ latest interests and activity on Discord."
+      },
+      {
+        "question": "Can I join the community in French or English?",
+        "answer": "The 11e brings French and English-speaking players together. The website and Nexus bot offer French and English flows to help everyone find their games and choose notifications."
+      },
+      {
+        "question": "How do I find players for a game and choose notifications?",
+        "answer": "Once you have the relevant server access, use Nexus on Discord to explore the catalogue and find game channels. Notifications are optional: choose the games you want to follow and remove subscriptions whenever you wish."
+      }
+    ]
   }
 }
