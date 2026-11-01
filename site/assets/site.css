@@ -859,6 +859,66 @@ h2 {
 .origins-content > a {
   margin-top: 10px;
 }
+.fo-heritage {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1.35fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 38px;
+  padding: 38px max(32px, calc((100% - 1120px) / 2));
+  border-top: 1px solid var(--line);
+  background: linear-gradient(110deg, #49131a24, transparent 65%);
+}
+.fo-archive {
+  margin: 0;
+}
+.fo-archive img {
+  width: 100%;
+  height: auto;
+  border: 4px solid #e6dac6;
+  transform: rotate(-3deg);
+  box-shadow: 5px 7px 0 #0004;
+}
+.fo-archive figcaption {
+  margin-top: 15px;
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+}
+.fo-story .eyebrow {
+  color: #c7a9af;
+  font-size: 9px;
+  margin-bottom: 9px;
+}
+.fo-story h3 {
+  font-family: var(--heading);
+  font-size: 32px;
+  line-height: 1.1;
+  margin: 0 0 14px;
+}
+.fo-story > p:last-child {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.85;
+  margin: 0;
+}
+.fo-motto {
+  margin: 0;
+  padding: 6px 0 6px 26px;
+  border-left: 2px solid var(--red);
+}
+.fo-motto > p {
+  font-family: var(--heading);
+  font-size: 28px;
+  line-height: 1.2;
+  color: var(--accent);
+  margin: 0 0 15px;
+}
+.fo-motto > footer {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
 .join-section {
   position: relative;
   isolation: isolate;
@@ -1388,6 +1448,16 @@ h2 {
   .origins-content > p:not(.eyebrow) {
     max-width: 580px;
   }
+  .fo-heritage {
+    grid-template-columns: 100px minmax(0, 1fr);
+    align-items: start;
+    gap: 26px;
+    padding: 36px 24px;
+  }
+  .fo-motto {
+    grid-column: 2;
+    padding-left: 20px;
+  }
   .join-content h2 {
     font-size: 66px;
   }
@@ -1408,6 +1478,30 @@ h2 {
   }
 }
 @media (max-width: 560px) {
+  .fo-heritage {
+    grid-template-columns: 90px minmax(0, 1fr);
+    row-gap: 20px;
+  }
+  .fo-archive {
+    grid-row: 1 / 3;
+  }
+  .fo-story {
+    display: contents;
+  }
+  .fo-story .eyebrow {
+    grid-column: 2;
+    align-self: end;
+    margin: 0;
+  }
+  .fo-story h3 {
+    grid-column: 2;
+    font-size: 28px;
+    margin: 0;
+  }
+  .fo-story > p:last-child,
+  .fo-motto {
+    grid-column: 1 / -1;
+  }
   html {
     scroll-padding-top: 25px;
   }

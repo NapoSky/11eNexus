@@ -42,6 +42,8 @@ Mettre à jour la sélection et sa date dans les deux langues si les jeux change
 
 Les images promotionnelles des jeux proviennent de leurs bibliothèques Steam publiques (`store_item_assets/steam/apps/<appid>/library_hero.jpg`) et le visuel Foxhole de `https://11e-foxhole.com/images/header-background-fr-2560.webp`. Les fichiers sont optimisés en WebP. Les crédits, liens sources et licences des polices figurent sur `/nexus/credits/`. Les visuels restent la propriété des ayants droit et sont exclus de la licence du code. Leur disponibilité publique n’équivaut pas à une licence libre.
 
+Dans la section des origines, `components/heritage.mjs` présente un clin d’œil au folklore 11eFO : les 35h, les mines de sel et un extrait du « texte non sacré » fourni par la communauté. L’affiche originelle `11EFO_PROPAGANDE.png` est reproduite intégralement, sans agrandissement ni recadrage, dans `assets/heritage/11efo-original.webp` (conversion sans perte, 283 × 300 pixels). Seul cet export choisi est publié ; les archives de travail restent privées. Cet encart secondaire ne modifie ni les métadonnées SEO ni les données structurées de la communauté multigaming.
+
 ## Publication par GitHub Actions
 
 Le workflow `.github/workflows/site.yml` est déclenché **uniquement** par un push sur `main` ou une pull request touchant `site/**`. Une modification de workflow seule, des traductions du bot, du README racine ou des fichiers du bot ne le déclenche pas. Il n’y a pas de déclenchement manuel. Les PR construisent et vérifient ; seuls les pushes sur `main` publient.

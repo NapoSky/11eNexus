@@ -117,7 +117,16 @@
     "body": "L’histoire du 11e s’est construite sur les champs de bataille de Foxhole, côté Warden. La logistique, les opérations et les longues soirées ont créé des liens qui dépassent les lignes de front.",
     "body2": "Ce même esprit nous accompagne ailleurs : s’organiser, s’entraider et vivre de belles histoires ensemble.",
     "cta": "Découvrir le 11e sur Foxhole",
-    "caption": "FOXHOLE / LÀ OÙ TOUT A COMMENCÉ"
+    "caption": "FOXHOLE / LÀ OÙ TOUT A COMMENCÉ",
+    "heritage": {
+      "eyebrow": "DANS LES ARCHIVES / 11eFO",
+      "title": "Les 35h, hors des tranchées.",
+      "body": "Un « syndicat » du 11e RC, des mines de sel et même une « église du sel » : le Discord a son folklore, né de Foxhole et de l’humour de ses joueurs. Derrière les revendications pour les 35h, une envie toute simple : se retrouver sur d’autres jeux.",
+      "quote": "« Nous méritons une vie hors des tranchées et voulons découvrir d’autres jeux ! »",
+      "source": "Extrait du « texte non sacré » du Discord",
+      "caption": "L’affiche originelle · 11eFO",
+      "alt": "Affiche historique 11eFO sur fond rouge : un personnage porte un drapeau et brandit un marteau."
+    }
   },
   "join": {
     "eyebrow": "LE POINT DE RALLIEMENT",
@@ -260,7 +269,8 @@
           "title": "Univers et illustrations",
           "paragraphs": [
             "Helldivers 2 : Arrowhead Game Studios / Sony Interactive Entertainment. Valheim : Iron Gate / Coffee Stain Publishing. Stellaris : Paradox Interactive. Barotrauma : FakeFish / Undertow Games / Daedalic Entertainment. Deep Rock Galactic : Ghost Ship Games / Coffee Stain Publishing. Visuels promotionnels provenant des pages publiques Steam, utilisés pour présenter les jeux de la communauté.",
-            "Foxhole : Siege Camp. Le visuel du régiment provient du site officiel du 11e. Ce site n’est ni affilié aux éditeurs ni approuvé par eux. Les visuels de jeux ne font pas partie d’une éventuelle licence du code source."
+            "Foxhole : Siege Camp. Le visuel du régiment provient du site officiel du 11e. Ce site n’est ni affilié aux éditeurs ni approuvé par eux. Les visuels de jeux ne font pas partie d’une éventuelle licence du code source.",
+            "L’affiche historique 11eFO et l’extrait du « texte non sacré » proviennent des archives de la communauté, fournies pour évoquer ses origines et son folklore."
           ]
         },
         {

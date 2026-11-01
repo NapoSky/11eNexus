@@ -117,7 +117,16 @@
     "body": "The 11e’s story began on Foxhole’s battlefields, fighting for the Wardens. Logistics, operations and long evenings built friendships that reach far beyond the front lines.",
     "body2": "We bring that same spirit wherever we go: work together, help each other and make great stories along the way.",
     "cta": "Meet the 11e in Foxhole",
-    "caption": "FOXHOLE / WHERE IT ALL BEGAN"
+    "caption": "FOXHOLE / WHERE IT ALL BEGAN",
+    "heritage": {
+      "eyebrow": "FROM THE ARCHIVES / 11eFO",
+      "title": "A 35-hour week, beyond the trenches.",
+      "body": "A “union” for the 11e RC, salt mines and even a “church of salt”: our Discord has its own folklore, born from Foxhole and the players’ sense of humour. Behind the demands for a 35-hour week lies a simple wish: to get together in other games.",
+      "quote": "“We deserve a life outside the trenches and want to discover other games!”",
+      "source": "Translated from the Discord’s “not-so-sacred text”",
+      "caption": "The original poster · 11eFO",
+      "alt": "Historical 11eFO poster on a red background: a figure carries a flag and raises a hammer."
+    }
   },
   "join": {
     "eyebrow": "THE RALLYING POINT",
@@ -260,7 +269,8 @@
           "title": "Worlds and artwork",
           "paragraphs": [
             "Helldivers 2: Arrowhead Game Studios / Sony Interactive Entertainment. Valheim: Iron Gate / Coffee Stain Publishing. Stellaris: Paradox Interactive. Barotrauma: FakeFish / Undertow Games / Daedalic Entertainment. Deep Rock Galactic: Ghost Ship Games / Coffee Stain Publishing. Promotional artwork comes from public Steam pages and illustrates the community’s games.",
-            "Foxhole: Siege Camp. The regiment image comes from the official 11e website. This site is not affiliated with or endorsed by the publishers. Game artwork is excluded from any source-code licence."
+            "Foxhole: Siege Camp. The regiment image comes from the official 11e website. This site is not affiliated with or endorsed by the publishers. Game artwork is excluded from any source-code licence.",
+            "The historical 11eFO poster and the excerpt from the “not-so-sacred text” come from the community’s archives, provided to illustrate its roots and folklore."
           ]
         },
         {
