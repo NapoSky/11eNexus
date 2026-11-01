@@ -1,7 +1,7 @@
 import { escapeHtml as escape, jsonScript } from './html.mjs';
 import { languageLinks, pagePath } from './routes.mjs';
 
-export function pageMetadata({ config, t }, type) {
+export function pageMetadata({ config, t, asset }, type) {
   const error = type === '404';
   return {
     type,
@@ -16,7 +16,7 @@ export function pageMetadata({ config, t }, type) {
         ? t.description
         : t.legal[type].description,
     canonical: error ? null : `${config.origin}${pagePath(t.lang, type)}`,
-    image: `${config.origin}/assets/social/community-${t.lang}.jpg`,
+    image: `${config.origin}${asset('social/community-11efo.jpg')}`,
     robots: error ? 'noindex, follow' : 'index, follow, max-image-preview:large',
   };
 }

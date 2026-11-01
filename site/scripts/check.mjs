@@ -98,6 +98,18 @@ for (const route of routes) {
   );
   assert.equal(metadata.find((tag) => tag.property === 'og:image:width')?.content, '1200');
   assert.equal(metadata.find((tag) => tag.property === 'og:image:height')?.content, '630');
+  const sharingImage = new URL(metadata.find((tag) => tag.property === 'og:image')?.content);
+  assert.equal(sharingImage.origin, config.origin);
+  assert.equal(sharingImage.pathname, '/assets/social/community-11efo.jpg');
+  assert.equal(
+    sharingImage.searchParams.get('v'),
+    createHash('sha256')
+      .update(await readFile(join(output, sharingImage.pathname)))
+      .digest('hex')
+      .slice(0, 12),
+    'Sharing images must change URL when their content changes',
+  );
+  assert.equal(metadata.find((tag) => tag.name === 'twitter:image')?.content, sharingImage.href);
   assert.equal(metadata.find((tag) => tag.name === 'twitter:card')?.content, 'summary_large_image');
   assert.ok(metadata.find((tag) => tag.name === 'twitter:image:alt')?.content);
 
@@ -224,14 +236,12 @@ assert.deepEqual(JSON.parse(jsonScript(injection)), injection, 'JSON-LD must saf
 const logo = await readFile(join(output, 'assets/social/emblem.png'));
 assert.equal(logo.readUInt32BE(16), 256);
 assert.equal(logo.readUInt32BE(20), 256);
-for (const language of ['fr', 'en']) {
-  const jpeg = await readFile(join(output, `assets/social/community-${language}.jpg`));
-  assert.deepEqual(
-    jpegDimensions(jpeg),
-    { width: 1200, height: 630 },
-    'Sharing images must match their declared dimensions',
-  );
-}
+const jpeg = await readFile(join(output, 'assets/social/community-11efo.jpg'));
+assert.deepEqual(
+  jpegDimensions(jpeg),
+  { width: 1200, height: 630 },
+  'Sharing images must match their declared dimensions',
+);
 
 let totalBytes = 0;
 for (const file of files) {

@@ -16,7 +16,7 @@ const config = await json('config.json');
 const catalogue = await json('content/games.json');
 const revisions = Object.fromEntries(
   await Promise.all(
-    ['site.css', 'site.js', 'emblem.svg'].map(async (file) => [
+    ['site.css', 'site.js', 'emblem.svg', 'social/community-11efo.jpg'].map(async (file) => [
       file,
       createHash('sha256')
         .update(await readFile(join(root, 'assets', file)))
