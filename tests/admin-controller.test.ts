@@ -341,6 +341,39 @@ test('native selectors repair a game using names, with review of the permission 
   expect(f.community.repairResources).toHaveBeenCalledTimes(1);
   expect(f.repository.game(g.id)?.blocked).toBe(false);
 });
+test('maintenance links a selected game to a historical channel only after confirmation', async () => {
+  const g = f.add(game({ name: 'OpenZ' }));
+  const historical = {
+    ...f.community.world.channels.find((c) => c.id === g.channelId)!,
+    id: '100000000000000444',
+    name: 'openz-history',
+  };
+  f.community.world.channels.push(historical);
+  let view = await run(button('na:maintenance'));
+  view = await run(click(view, 'rebind'));
+  const search = click(view, 'search');
+  await controller.handle(search as unknown as Interaction);
+  view = await run(submit(search, { query: 'OpenZ' }));
+  expect(select(view)).toEqual(
+    expect.arrayContaining([expect.objectContaining({ label: 'OpenZ', value: g.id })]),
+  );
+  view = await run(chosen(view, 'rebind-game', g.id));
+  expect(nodes(view).some((n) => n.type === ComponentType.ChannelSelect)).toBe(true);
+  expect(nodes(view).some((n) => n.type === ComponentType.RoleSelect)).toBe(false);
+  view = await run(chosen(view, 'rebind-channel', historical.id));
+  view = await run(click(view, 'preview'));
+  expect(JSON.stringify(view)).toContain(g.channelId);
+  expect(JSON.stringify(view)).toContain(historical.id);
+  expect(f.repository.game(g.id)?.channelId).toBe(g.channelId);
+  const cancelled = await run(click(view, 'cancel'));
+  expect(f.repository.game(g.id)?.channelId).toBe(g.channelId);
+  view = await run(click(cancelled, 'preview'));
+  view = await run(click(view, 'confirm'));
+  expect(f.repository.game(g.id)).toEqual({ ...g, channelId: historical.id });
+  expect(actionId(view, 'rebind', 'na')).toBeDefined();
+  expect(f.community.repairResources).not.toHaveBeenCalled();
+  expect(f.community.move).not.toHaveBeenCalled();
+});
 test('diagnostic and reconciliation are separate from rotation; opening screens does not mutate Discord', async () => {
   const g = f.add(game());
   f.community.world.roles[0]!.members = [member.id];

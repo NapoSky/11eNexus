@@ -140,7 +140,11 @@ export function auditResources(
     pending.some((op) => {
       if (op.data[kind === 'role' ? 'roleId' : 'channelId'] === id) return true;
       if (kind === 'channel')
-        return op.kind === 'create' && topic?.includes(`11eNexus:${op.gameId}`);
+        return (
+          op.kind === 'create' &&
+          (world.channels.find((c) => c.id === id)?.creationOperationId === op.id ||
+            topic?.includes(`11eNexus:${op.gameId}`))
+        );
       return (
         (op.kind === 'create' ||
           op.kind === 'activate' ||

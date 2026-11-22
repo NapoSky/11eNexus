@@ -126,26 +126,31 @@ test('tied positions use Discord snowflake ordering rather than names or array o
   expect(report.roles.some((r) => r.id === above)).toBe(false);
 });
 
-test('retired entries and unfinished creations are not mislabeled as strictly untracked', () => {
-  games.push(game({ name: 'Retired game', roleId: orphanRole, channelId: null, retired: true }));
-  const id = '100000000000000204';
-  world.roles.push(role(id, 'Pending game', 5));
-  const pending: Operation = {
-    id: 'operation',
-    kind: 'create',
-    gameId: 'pending-game',
-    actorId: null,
-    status: 'review',
-    startedAt: 0,
-    error: null,
-    data: { roleName: 'Pending game', previousRoleIds: [] },
-  };
-  world.channels.find((c) => c.id === orphanChannel)!.topic = '11eNexus:pending-game';
-  const report = auditResources(games, [pending], world, options);
-  expect(report.roles.find((r) => r.id === orphanRole)?.status).toBe('retired');
-  expect(report.roles.find((r) => r.id === id)?.status).toBe('pending');
-  expect(report.channels.find((c) => c.id === orphanChannel)?.status).toBe('pending');
-});
+test.each(['legacy topic', 'audit log'])(
+  'retired entries and unfinished creations are tracked using %s',
+  (evidence) => {
+    games.push(game({ name: 'Retired game', roleId: orphanRole, channelId: null, retired: true }));
+    const id = '100000000000000204';
+    world.roles.push(role(id, 'Pending game', 5));
+    const pending: Operation = {
+      id: 'operation',
+      kind: 'create',
+      gameId: 'pending-game',
+      actorId: null,
+      status: 'review',
+      startedAt: 0,
+      error: null,
+      data: { roleName: 'Pending game', previousRoleIds: [] },
+    };
+    const channel = world.channels.find((c) => c.id === orphanChannel)!;
+    if (evidence === 'legacy topic') channel.topic = '11eNexus:pending-game';
+    else channel.creationOperationId = pending.id;
+    const report = auditResources(games, [pending], world, options);
+    expect(report.roles.find((r) => r.id === orphanRole)?.status).toBe('retired');
+    expect(report.roles.find((r) => r.id === id)?.status).toBe('pending');
+    expect(report.channels.find((c) => c.id === orphanChannel)?.status).toBe('pending');
+  },
+);
 
 test('incomplete snapshots, empty databases and missing hierarchy information never produce orphan lists', () => {
   const incomplete = auditResources(games, [], { ...world, complete: false }, options);

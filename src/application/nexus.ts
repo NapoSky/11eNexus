@@ -745,6 +745,70 @@ export class Nexus {
       this.repository.audit('edit', admin.id, id, this.now());
     });
   }
+  validateChannelBinding(id: string, channelId: string, world: World) {
+    const game = this.game(id);
+    this.requireSettled(id);
+    if (!world.complete) throw new DomainError('incomplete');
+    const channel = world.channels.find((c) => c.id === channelId);
+    if (!channel || ![0, 5, 15, 16].includes(channel.type) || game.channelId === channelId)
+      throw new DomainError('invalidInput');
+    if (channel.editable === false) throw new DomainError('repairChannelPermission');
+    this.assertRepairResources(channelId, null, undefined, channel.topic);
+    if (
+      ['panel', 'adminPanel'].some(
+        (key) => this.repository.get<{ channelId: string }>(key)?.channelId === channelId,
+      )
+    )
+      throw new DomainError('repairReservedResource');
+    if (
+      this.repository
+        .games(true)
+        .some(
+          (g) =>
+            g.id !== id &&
+            (g.channelId === channelId || channel.topic?.includes(`11eNexus:${g.id}`)),
+        )
+    )
+      throw new DomainError('repairConflict');
+    if (
+      this.repository
+        .operations()
+        .some(
+          (op) =>
+            op.gameId !== id &&
+            ['pending', 'review'].includes(op.status) &&
+            (op.data.channelId === channelId || op.id === channel.creationOperationId),
+        )
+    )
+      throw new DomainError('repairConflict');
+    if (
+      channel.parentId !== this.policy.activeCategoryId &&
+      !world.archiveCategoryIds.includes(channel.parentId || '')
+    )
+      throw new DomainError('repairChannelScope');
+    return channel;
+  }
+  async rebindChannel(
+    admin: Actor,
+    id: string,
+    channelId: string,
+    guard?: MutationGuard,
+  ): Promise<void> {
+    requireAdmin(admin);
+    await this.mutex.run(async () => {
+      admin = await this.authorize(admin, true);
+      const world = await this.community.snapshot();
+      const channel = this.validateChannelBinding(id, channelId, world);
+      await guard?.({ world, activities: new Map() });
+      const game = this.game(id);
+      game.channelId = channelId;
+      game.state = channel.parentId === this.policy.activeCategoryId ? 'active' : 'archived';
+      this.repository.transaction(() => {
+        this.repository.saveGame(game);
+        this.repository.audit('rebind-channel', admin.id, id, this.now());
+      });
+    });
+  }
   async repair(
     admin: Actor,
     id: string,
@@ -961,8 +1025,9 @@ export class Nexus {
           if (!game.channelId) {
             const recoveryWorld = await this.community.snapshot(signal);
             if (!recoveryWorld.complete) throw new DomainError('incomplete');
-            const matches = recoveryWorld.channels.filter((c) =>
-              c.topic?.includes(`11eNexus:${game.id}`),
+            const matches = recoveryWorld.channels.filter(
+              (c) =>
+                c.creationOperationId === creation.id || c.topic?.includes(`11eNexus:${game.id}`),
             );
             if (matches.length === 1) game.channelId = matches[0]!.id;
           }
@@ -1018,7 +1083,9 @@ export class Nexus {
           const game = this.repository.game(op.gameId);
           if (!game) continue;
           if (op.kind === 'create') {
-            const channels = world.channels.filter((c) => c.topic?.includes(`11eNexus:${game.id}`));
+            const channels = world.channels.filter(
+              (c) => c.creationOperationId === op.id || c.topic?.includes(`11eNexus:${game.id}`),
+            );
             if (!game.channelId && channels.length === 1) game.channelId = channels[0]!.id;
           }
           if (

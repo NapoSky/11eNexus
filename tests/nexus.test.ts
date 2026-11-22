@@ -145,31 +145,39 @@ test('a partial creation is journalled and cannot produce a second game on retry
   await expect(f.nexus.create(member, 1)).rejects.toMatchObject({ code: 'partial' });
   expect(f.community.createChannel).toHaveBeenCalledTimes(1);
 });
-test('a crash after Discord creates a channel recovers its stable marker without recreation', async () => {
-  const g = game({ channelId: null, roleId: null, state: 'unavailable' });
-  f.repository.saveGame(g);
-  const channel = await f.community.createChannel(g);
-  const role = await f.community.createRole(g);
-  const op: Operation = {
-    id: 'op',
-    kind: 'create',
-    gameId: g.id,
-    actorId: member.id,
-    status: 'pending',
-    startedAt: now - 10,
-    data: { roleName: g.name, previousRoleIds: [] },
-    error: null,
-  };
-  f.repository.saveOperation(op);
-  await f.nexus.synchronize(false);
-  expect(f.repository.game(g.id)).toMatchObject({
-    channelId: channel,
-    roleId: role,
-    state: 'active',
-  });
-  expect(f.repository.operations()[0]?.status).toBe('completed');
-  expect(f.community.createChannel).toHaveBeenCalledTimes(1);
-});
+test.each(['legacy topic', 'audit log'])(
+  'a crash after Discord creates a channel recovers its %s without recreation',
+  async (evidence) => {
+    const g = game({ channelId: null, roleId: null, state: 'unavailable' });
+    f.repository.saveGame(g);
+    const channel = await f.community.createChannel(g);
+    const role = await f.community.createRole(g);
+    const op: Operation = {
+      id: 'op',
+      kind: 'create',
+      gameId: g.id,
+      actorId: member.id,
+      status: 'pending',
+      startedAt: now - 10,
+      data: { roleName: g.name, previousRoleIds: [] },
+      error: null,
+    };
+    f.repository.saveOperation(op);
+    if (evidence === 'audit log') {
+      const observed = f.community.world.channels.find((c) => c.id === channel)!;
+      observed.topic = '';
+      observed.creationOperationId = op.id;
+    }
+    await f.nexus.synchronize(false);
+    expect(f.repository.game(g.id)).toMatchObject({
+      channelId: channel,
+      roleId: role,
+      state: 'active',
+    });
+    expect(f.repository.operations()[0]?.status).toBe('completed');
+    expect(f.community.createChannel).toHaveBeenCalledTimes(1);
+  },
+);
 test('an archive failure blocks the game until an explicit repair normalizes permissions', async () => {
   f.repository.close();
   f = fixture(0);

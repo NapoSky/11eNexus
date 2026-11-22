@@ -1,6 +1,6 @@
 import { Administration } from '../src/application/administration.js';
 import { DAY } from '../src/domain/model.js';
-import { admin, asset, fixture, game, member, outsider } from './helpers.js';
+import { admin, archiveId, asset, fixture, game, member, outsider } from './helpers.js';
 let f: ReturnType<typeof fixture>;
 let service: Administration;
 beforeEach(() => {
@@ -12,6 +12,151 @@ afterEach(() => {
   f.repository.close();
 });
 const changes = () => f.repository.db.prepare('SELECT total_changes() AS n').get()!.n;
+
+function binding() {
+  const original = f.add(game({ name: 'OpenZ', blocked: true }));
+  const channel = {
+    ...f.community.world.channels.find((c) => c.id === original.channelId)!,
+    id: 'existing-openz',
+    name: 'openz-history',
+    permissions: 'custom-permissions',
+  };
+  f.community.world.channels.push(channel);
+  return {
+    original,
+    channel,
+    action: { kind: 'rebind' as const, gameId: original.id, channelId: channel.id },
+  };
+}
+
+test('channel binding changes only the association and observed location without Discord writes', async () => {
+  const { original, channel, action } = binding();
+  channel.parentId = archiveId;
+  f.repository.subscribe(original.id, member.id, true);
+  const world = structuredClone(f.community.world);
+  const before = changes();
+  const plan = await service.plan(admin, action);
+  expect(changes()).toBe(before);
+  expect(f.repository.game(original.id)).toEqual(original);
+  await service.execute(admin, plan);
+  expect(f.repository.game(original.id)).toEqual({
+    ...original,
+    channelId: channel.id,
+    state: 'archived',
+  });
+  expect(f.repository.subscribers(original.id)).toEqual([member.id]);
+  expect(f.community.world).toEqual(world);
+  for (const write of [
+    f.community.createChannel,
+    f.community.createRole,
+    f.community.move,
+    f.community.repairResources,
+    f.community.setSubscription,
+    f.community.deleteRole,
+    f.community.notify,
+    f.community.alert,
+  ])
+    expect(write).not.toHaveBeenCalled();
+});
+
+test('binding works after deletion of the generated channel and survives reconciliation', async () => {
+  const { original, channel, action } = binding();
+  f.community.world.channels = f.community.world.channels.filter(
+    (c) => c.id !== original.channelId,
+  );
+  await service.execute(admin, await service.plan(admin, action));
+  await f.nexus.synchronize(false);
+  expect(f.repository.game(original.id)?.channelId).toBe(channel.id);
+  expect(f.community.createChannel).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['missing', 'invalidInput'],
+  ['type', 'invalidInput'],
+  ['scope', 'repairChannelScope'],
+  ['permission', 'repairChannelPermission'],
+  ['same', 'invalidInput'],
+  ['retired', 'notFound'],
+  ['conflict', 'repairConflict'],
+  ['marker', 'repairConflict'],
+  ['panel', 'repairReservedResource'],
+  ['event', 'repairReservedResource'],
+  ['pending', 'needsReview'],
+])('channel binding refuses %s before changing the game', async (failure, code) => {
+  const { original, channel, action } = binding();
+  if (failure === 'missing') action.channelId = 'missing';
+  if (failure === 'type') channel.type = 2;
+  if (failure === 'scope') channel.parentId = 'outside';
+  if (failure === 'permission') channel.editable = false;
+  if (failure === 'same') action.channelId = original.channelId!;
+  if (failure === 'retired') f.repository.saveGame({ ...original, retired: true });
+  if (failure === 'conflict') f.repository.saveGame(game({ channelId: channel.id, retired: true }));
+  if (failure === 'marker') {
+    const other = f.add(game());
+    channel.topic = `11eNexus:${other.id}`;
+  }
+  if (failure === 'panel') f.repository.set('adminPanel', { channelId: channel.id });
+  if (failure === 'event') channel.topic = '11eNexus:event:reserved';
+  if (failure === 'pending')
+    f.repository.saveOperation({
+      id: 'unresolved',
+      gameId: original.id,
+      kind: 'archive',
+      status: 'review',
+      actorId: admin.id,
+      startedAt: f.clock.now(),
+      data: {},
+      error: 'discordError',
+    });
+  const before = changes();
+  await expect(service.plan(admin, action)).rejects.toMatchObject({ code });
+  await expect(f.nexus.rebindChannel(admin, original.id, action.channelId)).rejects.toMatchObject({
+    code,
+  });
+  expect(f.repository.game(original.id)?.channelId).toBe(original.channelId);
+  expect(changes()).toBe(before);
+});
+
+test.each([
+  ['target', 'staleAction'],
+  ['source-deleted', 'staleAction'],
+  ['permissions', 'staleAction'],
+  ['other-game', 'repairConflict'],
+  ['panel', 'repairReservedResource'],
+  ['operation', 'needsReview'],
+  ['revoked', 'adminOnly'],
+  ['expired', 'staleAction'],
+  ['replay', 'invalidInput'],
+])('binding confirmation rejects %s changes', async (change, code) => {
+  const { original, channel, action } = binding();
+  const plan = await service.plan(admin, action);
+  if (change === 'target') channel.parentId = archiveId;
+  if (change === 'source-deleted')
+    f.community.world.channels = f.community.world.channels.filter(
+      (c) => c.id !== original.channelId,
+    );
+  if (change === 'permissions') channel.permissions = 'changed';
+  if (change === 'other-game') f.repository.saveGame(game({ channelId: channel.id }));
+  if (change === 'panel') f.repository.set('panel', { channelId: channel.id });
+  if (change === 'operation')
+    f.repository.saveOperation({
+      id: 'op',
+      gameId: original.id,
+      kind: 'archive',
+      status: 'pending',
+      actorId: admin.id,
+      startedAt: f.clock.now(),
+      data: {},
+      error: null,
+    });
+  if (change === 'revoked')
+    f.community.authorize.mockResolvedValueOnce({ ...admin, admin: false, member: true });
+  if (change === 'expired') f.clock.at += 5 * 60000;
+  if (change === 'replay') await service.execute(admin, plan);
+  const before = changes();
+  await expect(service.execute(admin, plan)).rejects.toMatchObject({ code });
+  expect(changes()).toBe(before);
+});
 
 test('diagnostic and preparing reconciliation do not write SQL, move channels, change roles or alert staff', async () => {
   const g = f.add(game());

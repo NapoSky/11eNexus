@@ -342,7 +342,14 @@ export class AdminController {
         `${t('a.channel')}: <#${action.channelId}>\n${t('a.role')}: <@&${action.roleId}>`,
         t('a.repairPermissions'),
       );
-    else if (action.kind === 'reject' || action.kind === 'clarify')
+    else if (action.kind === 'rebind') {
+      const currentId = repo.game(action.gameId)?.channelId;
+      details.push(
+        `${t('a.current')}: ${currentId ? `<#${currentId}> · \`${currentId}\`` : t('a.missing')}`,
+        `${t('a.after')}: <#${action.channelId}> · \`${action.channelId}\``,
+        t('a.rebindConsequences'),
+      );
+    } else if (action.kind === 'reject' || action.kind === 'clarify')
       details.push(t('a.reasonHelp'), escapeMarkdown(action.reason));
     else if (action.kind === 'attach') details.push(t('a.attachHelp'));
     else if (action.kind === 'reconcile' || action.kind === 'rotate') {
@@ -406,6 +413,7 @@ export class AdminController {
         'preview',
         'edit',
         'repair',
+        'rebind',
         'diagnose',
         'reconcile',
         'rotate',
@@ -621,6 +629,9 @@ export class AdminController {
       } else if (action === 'repair') {
         if (route.page !== 'game') throw new DomainError('invalidInput');
         route = { page: 'repair', id: route.id, back: route };
+      } else if (action === 'rebind') {
+        if (route.page !== 'maintenance') throw new DomainError('invalidInput');
+        route = { page: 'rebind-games', query: '', index: 0, back: { page: 'maintenance' } };
       } else if (action === 'panel-member' || action === 'panel-staff') {
         if (route.page !== 'panels') throw new DomainError('invalidInput');
         route = await this.panelRoute(action === 'panel-member' ? 'member' : 'staff');
@@ -635,7 +646,15 @@ export class AdminController {
           route = { page: 'game', id: value, back: route };
         else if (action === 'problem-game' && route.page === 'maintenance')
           route = { page: 'repair', id: value, back: route };
-        else if (action === 'candidate' && route.page === 'results') {
+        else if (action === 'rebind-game' && route.page === 'rebind-games') {
+          const game = this.nexus.repository.game(value);
+          if (!game || game.retired) throw new DomainError('notFound');
+          route = { page: 'rebind', id: value, back: route };
+        } else if (action === 'rebind-channel' && route.page === 'rebind') {
+          const world = await this.nexus.community.snapshot();
+          const channel = this.nexus.validateChannelBinding(route.id, value, world);
+          route = { ...route, channelId: value, channelName: channel.name };
+        } else if (action === 'candidate' && route.page === 'results') {
           const id = Number(value);
           if (!route.items.some((c) => c.id === id)) throw new DomainError('invalidInput');
           replyState.signal.throwIfAborted();
@@ -763,6 +782,14 @@ export class AdminController {
             },
             language,
           );
+        } else if (route.page === 'rebind') {
+          if (!route.channelId) throw new DomainError('invalidInput');
+          route = await this.review(
+            actor,
+            route,
+            { kind: 'rebind', gameId: route.id, channelId: route.channelId },
+            language,
+          );
         } else if (route.page === 'repair') {
           if (!route.channelId || !route.roleId) throw new DomainError('invalidInput');
           route = await this.review(
@@ -834,6 +861,7 @@ export class AdminController {
               : list('catalogue');
         } else if ('proposalId' in a && a.proposalId)
           route = { page: 'request', id: a.proposalId, back: requestBack };
+        else if (a.kind === 'rebind') route = { page: 'maintenance' };
         else if ('gameId' in a)
           route = {
             page: 'game',

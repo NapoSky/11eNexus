@@ -81,6 +81,10 @@ Un renommage Discord partiellement effectué reste journalisé et bloque le jeu 
 
 ## Maintenance
 
+**Rattacher un salon existant** permet de corriger le salon d’un jeu déjà déclaré, même si le salon Nexus a déjà été supprimé : rechercher le jeu, sélectionner le salon à conserver dans une catégorie de jeux Nexus, puis relire les anciens et nouveaux IDs et confirmer. Le rôle, les abonnements, les permissions et les historiques sont conservés ; l’état actif ou archivé suit l’emplacement du salon choisi. L’ancien salon devient non suivi et peut être supprimé manuellement après vérification. Un salon déjà lié à un autre jeu, réservé à un événement ou à un panneau est refusé. Les opérations du jeu en attente ou à vérifier doivent d’abord être réparées ; ce rattachement ne les clôture pas et ne lève pas une suspension.
+
+Les nouveaux salons de jeux sont créés avec une description vide. En cas d’interruption avant l’enregistrement de leur ID, Nexus peut retrouver la création grâce au journal d’audit Discord (permission **Voir les logs du serveur**, cent créations récentes). Les anciens marqueurs de description restent reconnus. Sans preuve unique, Nexus conserve l’opération à vérifier et ne recrée aucun salon.
+
 L’ouverture affiche une aide. **Vérifier maintenant** lit les ressources et l’activité, sans déplacer de salon, changer de rôle, réconcilier la base ou publier d’alerte. Les sessions de navigation restent enregistrées séparément.
 
 Le clic affiche immédiatement la vérification en cours. Le diagnostic peut avancer pendant une réconciliation sans retenir les actions des membres. L’écran indique ensuite la lecture des ressources puis le nombre de jeux vérifiés, avec des mises à jour espacées pour limiter les appels Discord. Le bouton de vérification est désactivé pendant ce scan ; **Retour** et **Accueil admin** restent disponibles. Quitter cet écran arrête la suite du scan après l’appel réseau en cours. Une réponse ou une erreur tardive ne remplace pas le nouveau menu ; un autre menu personnel ouvert dans un message distinct reste indépendant. La fin du diagnostic et les échecs sont signalés explicitement, avec possibilité de réessayer.

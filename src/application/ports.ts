@@ -51,6 +51,7 @@ export interface RoleObservation {
 }
 export interface ChannelObservation {
   id: string;
+  creationOperationId?: string;
   name: string;
   parentId: string | null;
   type: number;

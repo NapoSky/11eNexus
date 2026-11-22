@@ -58,6 +58,8 @@ export type AdminRoute =
     }
   | { page: 'parents'; draft: AdminDraft; query: string; index: number }
   | { page: 'attach'; proposalId: string; query: string; index: number; back: AdminRoute }
+  | { page: 'rebind-games'; query: string; index: number; back: AdminRoute }
+  | { page: 'rebind'; id: string; channelId?: string; channelName?: string; back: AdminRoute }
   | {
       page: 'repair';
       id: string;
@@ -153,13 +155,15 @@ export class AdminViews {
         length = repo
           .games(true)
           .filter((g) =>
-            route.page === 'attach'
-              ? !g.retired && !g.blocked
-              : route.filter === 'all'
-                ? !g.retired
-                : route.filter === 'retired'
-                  ? g.retired
-                  : !g.retired && g.state === route.filter,
+            route.page === 'rebind-games'
+              ? !g.retired
+              : route.page === 'attach'
+                ? !g.retired && !g.blocked
+                : route.filter === 'all'
+                  ? !g.retired
+                  : route.filter === 'retired'
+                    ? g.retired
+                    : !g.retired && g.state === route.filter,
           )
           .filter(
             (g) =>
@@ -511,6 +515,52 @@ export class AdminViews {
       else line(t('empty'));
       paginate(games.length, route.index);
       controls(b('search', 'search'), b('clearSearch', 'clear').setDisabled(!route.query));
+    } else if (route.page === 'rebind-games') {
+      title('a.rebind', 'a.rebindHelp');
+      const games = repo
+        .games()
+        .filter(
+          (g) =>
+            !route.query ||
+            [g.name, ...g.aliases].some((name) => normalize(name).includes(normalize(route.query))),
+        )
+        .sort((a, b) => a.name.localeCompare(b.name, language));
+      if (games.length)
+        select(
+          'rebind-game',
+          'chooseGame',
+          slice(games, route.index).map((g) => ({ label: g.name, value: g.id })),
+        );
+      else line(t('empty'));
+      paginate(games.length, route.index);
+      controls(b('search', 'search'), b('clearSearch', 'clear').setDisabled(!route.query));
+    } else if (route.page === 'rebind') {
+      title('a.rebind', 'a.rebindHelp');
+      const game = repo.game(route.id);
+      line(
+        `**${escapeMarkdown(game?.name || '')}**\n${t('a.current')}: ${game?.channelId ? `<#${game.channelId}> · \`${game.channelId}\`` : t('a.missing')}`,
+      );
+      if (route.channelId)
+        line(
+          `${t('a.after')}: **${escapeMarkdown(route.channelName || '')}** · <#${route.channelId}> · \`${route.channelId}\``,
+        );
+      controls(
+        new ChannelSelectMenuBuilder()
+          .setCustomId(`na:rebind-channel:${s.id}`)
+          .setPlaceholder(t('a.chooseChannel'))
+          .setChannelTypes(
+            ChannelType.GuildText,
+            ChannelType.GuildAnnouncement,
+            ChannelType.GuildForum,
+            ChannelType.GuildMedia,
+          ),
+      );
+      line(t('a.rebindConsequences'));
+      controls(
+        b('a.preview', 'preview', ButtonStyle.Primary).setDisabled(
+          !route.channelId || route.channelId === game?.channelId,
+        ),
+      );
     } else if (route.page === 'repair') {
       title('a.repair', 'a.repairHelp');
       line(
@@ -618,6 +668,7 @@ export class AdminViews {
         );
       } else line(t('a.diagnosticHelp'));
       controls(b('a.diagnose', 'diagnose', ButtonStyle.Primary).setDisabled(!!route.progress));
+      controls(b('a.rebind', 'rebind').setDisabled(!!route.progress));
     } else if (route.page === 'panels') {
       title('a.panels', 'a.panelsHelp');
       controls(

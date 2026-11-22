@@ -1,4 +1,5 @@
 import {
+  AuditLogEvent,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -195,6 +196,30 @@ export class DiscordCommunity implements Community {
     signal?.throwIfAborted();
     const me = await guild.members.fetchMe();
     signal?.throwIfAborted();
+    // Only interrupted creations need audit evidence; ordinary inventories do not.
+    const recovering = this.repository
+      .operations()
+      .filter(
+        (op) =>
+          op.kind === 'create' &&
+          ['pending', 'review'].includes(op.status) &&
+          !this.repository.game(op.gameId)?.channelId,
+      );
+    const channelOperations = new Map<string, string>();
+    if (recovering.length && me.permissions.has(P.ViewAuditLog)) {
+      const logs = await guild.fetchAuditLogs({ type: AuditLogEvent.ChannelCreate, limit: 100 });
+      signal?.throwIfAborted();
+      for (const entry of logs.entries.values()) {
+        const operation = recovering.find((op) => entry.reason === `11eNexus op:${op.id}`);
+        if (
+          operation &&
+          this.client.user &&
+          entry.executorId === this.client.user.id &&
+          entry.targetId
+        )
+          channelOperations.set(entry.targetId, operation.id);
+      }
+    }
     const archiveIds = (this.repository.get<string[]>('archiveCategories') || []).filter(
       (id) => channels.get(id)?.type === ChannelType.GuildCategory,
     );
@@ -203,6 +228,9 @@ export class DiscordCommunity implements Community {
         .filter((c): c is NonNullable<typeof c> => c !== null)
         .map((c) => ({
           id: c.id,
+          ...(channelOperations.has(c.id)
+            ? { creationOperationId: channelOperations.get(c.id) }
+            : {}),
           name: c.name,
           parentId: c.parentId,
           type: c.type,
@@ -284,7 +312,7 @@ export class DiscordCommunity implements Community {
       name: channelName(game.name),
       type: ChannelType.GuildText,
       parent,
-      topic: `11eNexus:${game.id} · ${game.name}`,
+      topic: '',
       permissionOverwrites: this.overwrites(false),
       reason: `11eNexus op:${operationId}`,
     });

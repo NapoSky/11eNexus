@@ -35,6 +35,7 @@ export type AdminAction =
   | { kind: 'activate' | 'archive' | 'block' | 'unblock' | 'retire'; gameId: string }
   | { kind: 'edit'; gameId: string; name: string; aliases: string[]; align: boolean }
   | { kind: 'repair'; gameId: string; channelId: string; roleId: string }
+  | { kind: 'rebind'; gameId: string; channelId: string }
   | { kind: 'reject' | 'clarify'; proposalId: string; reason: string }
   | { kind: 'attach'; proposalId: string; gameId: string }
   | { kind: 'create'; input: PreparedGame; proposalId?: string }
@@ -74,7 +75,9 @@ export class Administration {
   private needsWorld(action?: AdminAction): boolean {
     return (
       !action ||
-      ['create', 'activate', 'archive', 'repair', 'reconcile', 'rotate'].includes(action.kind) ||
+      ['create', 'activate', 'archive', 'repair', 'rebind', 'reconcile', 'rotate'].includes(
+        action.kind,
+      ) ||
       (action.kind === 'edit' && action.align)
     );
   }
@@ -94,7 +97,12 @@ export class Administration {
     const global = !action || action.kind === 'reconcile' || action.kind === 'rotate';
     const game =
       action && 'gameId' in action ? this.nexus.repository.game(action.gameId) : undefined;
-    const channelIds = [game?.channelId, action?.kind === 'repair' ? action.channelId : undefined];
+    const channelIds = [
+      game?.channelId,
+      action && ['repair', 'rebind'].includes(action.kind) && 'channelId' in action
+        ? action.channelId
+        : undefined,
+    ];
     const roleIds = [game?.roleId, action?.kind === 'repair' ? action.roleId : undefined];
     const capacity =
       action?.kind === 'create' || action?.kind === 'activate' || action?.kind === 'archive';
@@ -102,7 +110,7 @@ export class Administration {
       complete: world.complete,
       roleIcons: capacity ? world.roleIcons : undefined,
       archives:
-        global || capacity || action?.kind === 'repair'
+        global || capacity || action?.kind === 'repair' || action?.kind === 'rebind'
           ? [...world.archiveCategoryIds].sort()
           : undefined,
       channelCount: capacity ? world.channels.length : undefined,
@@ -159,6 +167,15 @@ export class Administration {
               action?.kind === 'create' ||
               (action && 'gameId' in action && o.gameId === action.gameId)),
         ),
+      associations:
+        action?.kind === 'rebind'
+          ? {
+              games: repo.games(true).map((g) => [g.id, g.channelId]),
+              events: repo.events().map((e) => [e.id, e.channelId]),
+              eventOperations: repo.eventOperations().filter((op) => op.status !== 'completed'),
+              panels: [repo.get('panel'), repo.get('adminPanel')],
+            }
+          : undefined,
     });
   }
   async plan(actor: Actor, action: AdminAction, preview?: MaintenancePreview): Promise<AdminPlan> {
@@ -239,6 +256,8 @@ export class Administration {
         )
           throw new DomainError('repairConflict');
       }
+      if (action.kind === 'rebind')
+        this.nexus.validateChannelBinding(action.gameId, action.channelId, world);
       if (action.kind === 'activate' || action.kind === 'archive') {
         const game = this.nexus.repository.game(action.gameId);
         const channel = world.channels.find((c) => c.id === game?.channelId);
@@ -462,6 +481,8 @@ export class Administration {
       await nexus.edit(actor, action.gameId, action.name, action.aliases, action.align, guard);
     else if (action.kind === 'repair')
       await nexus.repair(actor, action.gameId, action.channelId, action.roleId, guard);
+    else if (action.kind === 'rebind')
+      await nexus.rebindChannel(actor, action.gameId, action.channelId, guard);
     else if (action.kind === 'reject')
       await nexus.reject(actor, action.proposalId, action.reason, guard);
     else if (action.kind === 'clarify')

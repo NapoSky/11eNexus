@@ -5,6 +5,7 @@ import {
   GatewayIntentBits,
   Guild,
   ChannelType,
+  AuditLogEvent,
   PermissionFlagsBits as P,
   type Message,
   type GuildMember,
@@ -34,6 +35,97 @@ test('the gateway never requests message content intent', () => {
   expect(client.options.intents.has(GatewayIntentBits.GuildMembers)).toBe(true);
   expect(client.options.intents.has(GatewayIntentBits.MessageContent)).toBe(false);
 });
+
+test('new game channels have an empty description and keep their recovery reason in the audit log', async () => {
+  Object.defineProperty(client, 'user', { value: { id: 'nexus-bot' }, configurable: true });
+  const create = jest.fn(async () => ({ id: 'created' }));
+  jest.spyOn(gateway, 'guild').mockResolvedValue({
+    channels: {
+      fetch: async () =>
+        new Collection([
+          [
+            gateway.config.activeCategoryId,
+            { id: gateway.config.activeCategoryId, type: ChannelType.GuildCategory },
+          ],
+        ]),
+      create,
+    },
+  } as unknown as Guild);
+  const g = game({ name: 'OpenZ' });
+  await expect(gateway.createChannel(g, 'operation')).resolves.toBe('created');
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({ name: 'openz', topic: '', reason: '11eNexus op:operation' }),
+  );
+});
+
+test.each([true, false])(
+  'interrupted channel creation uses exact bot audit evidence (permission: %s)',
+  async (permission) => {
+    const g = game({ channelId: null });
+    f.repository.saveGame(g);
+    f.repository.saveOperation({
+      id: 'creation',
+      gameId: g.id,
+      kind: 'create',
+      status: 'pending',
+      actorId: member.id,
+      startedAt: now,
+      data: {},
+      error: null,
+    });
+    Object.defineProperty(client, 'user', { value: { id: 'nexus-bot' }, configurable: true });
+    const guild = inventoryGuild(0, jest.fn().mockResolvedValue(new Collection()));
+    guild.members.fetchMe.mockResolvedValue({
+      permissions: { has: (flag?: bigint) => flag !== P.ViewAuditLog || permission },
+      roles: { highest: { comparePositionTo: () => 1 } },
+    });
+    const channels = new Collection(
+      ['correct', 'other-bot', 'wrong-reason'].map((id) => [
+        id,
+        {
+          id,
+          name: 'openz',
+          parentId: gateway.config.activeCategoryId,
+          type: ChannelType.GuildText,
+          topic: '',
+          permissionOverwrites: { cache: new Collection() },
+          permissionsFor: () => ({ has: () => true }),
+        },
+      ]),
+    );
+    guild.channels.fetch = async () => channels;
+    const fetchAuditLogs = jest.fn(async () => ({
+      entries: new Collection([
+        ['1', { executorId: 'nexus-bot', targetId: 'correct', reason: '11eNexus op:creation' }],
+        [
+          '2',
+          { executorId: 'someone-else', targetId: 'other-bot', reason: '11eNexus op:creation' },
+        ],
+        [
+          '3',
+          { executorId: 'nexus-bot', targetId: 'wrong-reason', reason: '11eNexus op:different' },
+        ],
+      ]),
+    }));
+    jest
+      .spyOn(gateway, 'guild')
+      .mockResolvedValue({ ...guild, fetchAuditLogs } as unknown as Guild);
+    const world = await gateway.snapshot();
+    expect(world.channels.find((c) => c.id === 'correct')?.creationOperationId).toBe(
+      permission ? 'creation' : undefined,
+    );
+    expect(world.channels.find((c) => c.id === 'other-bot')?.creationOperationId).toBeUndefined();
+    expect(
+      world.channels.find((c) => c.id === 'wrong-reason')?.creationOperationId,
+    ).toBeUndefined();
+    if (permission)
+      expect(fetchAuditLogs).toHaveBeenCalledWith({
+        type: AuditLogEvent.ChannelCreate,
+        limit: 100,
+      });
+    else expect(fetchAuditLogs).not.toHaveBeenCalled();
+  },
+);
 test('game role sorting previews without writes, preserves integration slots, then becomes idempotent', async () => {
   const r = (id: string, name: string, position: number, managed = false) => ({
     id,
@@ -908,7 +1000,7 @@ function inventoryGuild(count: number, list: jest.Mock) {
       list,
       fetch,
       fetchMe: jest.fn(async () => ({
-        permissions: { has: () => true },
+        permissions: { has: (_flag?: bigint): boolean => true },
         roles: { highest: { comparePositionTo: () => 1 } },
       })),
     },
