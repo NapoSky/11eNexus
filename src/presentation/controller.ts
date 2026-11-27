@@ -79,6 +79,7 @@ const actions = new Set([
   'activate',
   'subscribe',
   'unsubscribe',
+  'game-notifications',
 ]);
 const unavailableResponse = (error: unknown): boolean => {
   if (!error || typeof error !== 'object' || !('code' in error)) return false;
@@ -358,7 +359,8 @@ export class Controller {
       if ('customId' in i && parts[0] !== 'nx' && parts[0] !== 'nxm') return;
       const action = parts[1] || '';
       const token = parts[2];
-      if (token) s = ownedSession(this.nexus.repository, actor.id, token);
+      if (token && action !== 'game-notifications')
+        s = ownedSession(this.nexus.repository, actor.id, token);
       if (i.isButton() && ['propose', 'search', 'manual', 'notify', 'amend'].includes(action)) {
         const data = s || session(this.nexus.repository, actor.id, 'entry', {});
         if (action === 'amend') {
@@ -481,6 +483,24 @@ export class Controller {
       }
       this.log.debug({ event: 'interaction_acknowledged', ...context() });
       phase = 'handle';
+      if (action === 'game-notifications') {
+        if (!i.isButton() || parts[0] !== 'nx' || parts.length !== 3 || !token)
+          throw new DomainError('invalidInput');
+        const game = this.nexus.repository.games().find((game) => game.channelId === token);
+        if (!game || game.retired) throw new DomainError('notFound');
+        if (i.channelId !== game.channelId || i.message.author.id !== this.gateway.client.user!.id)
+          throw new DomainError('forbidden');
+        await this.nexus.subscribe(actor, game.id, true);
+        await respond(
+          this.views.feedback(
+            language,
+            t('gameNotificationEnabled', { game: escapeMarkdown(game.name) }),
+            false,
+            false,
+          ),
+        );
+        return;
+      }
       if (
         [
           'create',

@@ -74,6 +74,98 @@ test('the public panel opens an ephemeral localized catalogue without editing it
   expect(JSON.stringify(i.editReply.mock.calls)).toContain('Jeux');
 });
 
+function gameNotificationButton(g: ReturnType<typeof game>, language = 'fr') {
+  Object.defineProperty(client, 'user', { value: { id: 'nexus-bot' }, configurable: true });
+  return {
+    ...button(`nx:game-notifications:${g.channelId}`),
+    locale: language,
+    channelId: g.channelId,
+    message: { id: 'pinned-invitation', author: { id: 'nexus-bot' }, flags: { has: () => false } },
+  };
+}
+
+test.each([
+  ['fr', 'sont activées pour toi'],
+  ['en', 'are enabled for you'],
+])(
+  'the pinned invitation subscribes directly with private %s feedback and no panel navigation',
+  async (language, confirmation) => {
+    const g = f.add(game());
+    const savedSessions = jest.spyOn(f.repository, 'saveSession');
+    for (let click = 0; click < 2; click++) {
+      const i = gameNotificationButton(g, language);
+      await controller.handle(i as unknown as Interaction);
+      expect(i.deferReply).toHaveBeenCalledWith({
+        flags: MessageFlags.Ephemeral,
+        withResponse: true,
+      });
+      expect(i.deferUpdate).not.toHaveBeenCalled();
+      expect(JSON.stringify(i.editReply.mock.calls)).toContain(confirmation);
+      expect(controls(i.editReply.mock.calls.at(-1)![0])).toHaveLength(0);
+      expect(i.editReply.mock.calls.at(-1)![0]).toMatchObject({ allowedMentions: { parse: [] } });
+      expect(f.repository.subscribed(g.id, member.id)).toBe(true);
+      expect(f.community.world.roles.find((r) => r.id === g.roleId)!.members).toEqual([member.id]);
+    }
+    expect(savedSessions).not.toHaveBeenCalled();
+    expect(f.community.move).not.toHaveBeenCalled();
+  },
+);
+
+test.each([
+  'channel',
+  'author',
+  'member',
+  'fresh-member',
+  'retired',
+  'blocked',
+  'missing-role',
+  'missing-game',
+] as const)('the invitation refuses an invalid %s without assigning a role', async (invalid) => {
+  const g = f.add(
+    game({
+      retired: invalid === 'retired',
+      blocked: invalid === 'blocked',
+      roleState: invalid === 'missing-role' ? 'missing' : 'present',
+    }),
+  );
+  const i = gameNotificationButton(g);
+  if (invalid === 'channel') i.channelId = 'other-channel';
+  if (invalid === 'author') i.message.author.id = 'other-bot';
+  if (invalid === 'member') i.member.roles = [];
+  if (invalid === 'fresh-member')
+    f.community.authorize.mockResolvedValueOnce({ ...member, member: false });
+  if (invalid === 'missing-game') i.customId = 'nx:game-notifications:unknown';
+  await controller.handle(i as unknown as Interaction);
+  expect(f.community.setSubscription).not.toHaveBeenCalled();
+  expect(f.repository.subscribed(g.id, member.id)).toBe(false);
+  expect(JSON.stringify([...i.reply.mock.calls, ...i.editReply.mock.calls])).not.toContain(
+    'sont activées pour toi',
+  );
+});
+
+test('the pinned channel button survives a controller restart and expired personal sessions', async () => {
+  const g = f.add(game());
+  const expired = session(f.repository, member.id, 'game', { gameId: g.id });
+  f.repository.saveSession({ ...expired, expiresAt: Date.now() - 1 });
+  controller = new Controller(f.nexus, gateway, log);
+  const readSession = jest.spyOn(f.repository, 'session');
+  const i = gameNotificationButton(g);
+  await controller.handle(i as unknown as Interaction);
+  expect(readSession).not.toHaveBeenCalled();
+  expect(f.repository.subscribed(g.id, member.id)).toBe(true);
+  expect(JSON.stringify(i.editReply.mock.calls)).toContain('sont activées pour toi');
+  expect(JSON.stringify(i.editReply.mock.calls)).not.toContain('expiré');
+});
+
+test('a pinned invitation cannot subscribe a game after its channel association changes', async () => {
+  const g = f.add(game());
+  const i = gameNotificationButton(g);
+  f.repository.saveGame({ ...g, channelId: 'replacement-channel' });
+  await controller.handle(i as unknown as Interaction);
+  expect(f.community.setSubscription).not.toHaveBeenCalled();
+  expect(f.repository.subscribed(g.id, member.id)).toBe(false);
+});
+
 test.each([
   ['fr', 'nx:games', 'other-guild', 'réservée au Discord multigaming du 11e'],
   ['en', 'nx:games', null, 'reserved for the 11e multigaming Discord server'],

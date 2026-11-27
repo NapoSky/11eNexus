@@ -65,6 +65,12 @@ interface NewGameAnnouncement {
   sentAt?: number;
   messageId?: string;
 }
+interface GameNotificationMessage {
+  status: 'pending' | 'sending' | 'pinning' | 'sent' | 'review';
+  createdAt: number;
+  messageId?: string;
+  sentAt?: number;
+}
 export class Nexus {
   readonly mutex = new Mutex();
   private readonly synchronization = new Mutex();
@@ -129,7 +135,13 @@ export class Nexus {
     if (at > 0) game.lastActivityAt = at;
     if (at >= game.activatedAt && at > 0) game.awaitingActivity = false;
   }
-  private queueNewGameAnnouncement(game: Game): void {
+  private queueNewGameAnnouncement(game: Game, notificationMessage = false): void {
+    const messageKey = `game-notification-message:${game.id}`;
+    if (notificationMessage && !this.repository.get(messageKey))
+      this.repository.set(messageKey, {
+        status: 'pending',
+        createdAt: this.now(),
+      } satisfies GameNotificationMessage);
     const key = `new-game-announcement:${game.id}`;
     if (!this.repository.get(key))
       this.repository.set(key, {
@@ -140,11 +152,49 @@ export class Nexus {
   private deliverNewGameAnnouncement(id: string): Promise<void> {
     const existing = this.announcementDeliveries.get(id);
     if (existing) return existing;
-    const task = this.announcementQueue.run(() => this.sendNewGameAnnouncement(id));
+    const task = this.announcementQueue.run(async () => {
+      await this.deliverGameNotificationMessage(id);
+      await this.sendNewGameAnnouncement(id);
+    });
     this.announcementDeliveries.set(id, task);
     const finished = () => this.announcementDeliveries.delete(id);
     void task.then(finished, finished);
     return task;
+  }
+  private async deliverGameNotificationMessage(id: string): Promise<void> {
+    const key = `game-notification-message:${id}`;
+    const claim = await this.mutex.run(async () => {
+      const game = this.repository.game(id);
+      const item = this.repository.get<GameNotificationMessage>(key);
+      if (!game || !item || ['sent', 'review'].includes(item.status)) return;
+      const review =
+        item.status === 'sending' || game.blocked || game.retired || game.state !== 'active';
+      this.repository.set(key, {
+        ...item,
+        status: review ? 'review' : item.status === 'pinning' ? 'pinning' : 'sending',
+      });
+      return { game, item, review };
+    });
+    if (!claim) return;
+    const { game, item } = claim;
+    try {
+      if (claim.review) throw new DomainError('needsReview');
+      if (item.status === 'pending') {
+        item.messageId = await this.community.sendGameNotificationMessage(game);
+        item.status = 'pinning';
+        await this.mutex.run(async () => this.repository.set(key, item));
+      }
+      if (!item.messageId) throw new DomainError('needsReview');
+      await this.community.pinGameNotificationMessage(game, item.messageId);
+      await this.mutex.run(async () =>
+        this.repository.set(key, { ...item, status: 'sent', sentAt: this.now() }),
+      );
+    } catch {
+      await this.mutex.run(async () => this.repository.set(key, { ...item, status: 'review' }));
+      await this.community.alert(`game-notification-message:${id}`, 'gameNotificationNeedsReview', {
+        game: game.name,
+      });
+    }
   }
   private async sendNewGameAnnouncement(id: string): Promise<void> {
     const key = `new-game-announcement:${id}`;
@@ -185,7 +235,14 @@ export class Nexus {
     signal?.throwIfAborted();
     for (const game of this.repository.games(true)) {
       const item = this.repository.get<NewGameAnnouncement>(`new-game-announcement:${game.id}`);
-      if (!item || item.status === 'sent' || item.status === 'review') continue;
+      const message = this.repository.get<GameNotificationMessage>(
+        `game-notification-message:${game.id}`,
+      );
+      if (
+        (!item || ['sent', 'review'].includes(item.status)) &&
+        (!message || ['sent', 'review'].includes(message.status))
+      )
+        continue;
       signal?.throwIfAborted();
       await this.scheduler.yield();
       signal?.throwIfAborted();
@@ -360,6 +417,7 @@ export class Nexus {
       roleName: game.name,
       previousRoleIds: world.roles.map((r) => r.id),
       announceNewGame: true,
+      gameNotificationMessage: true,
     });
     try {
       game.channelId = await this.community.createChannel(game, op.id);
@@ -375,7 +433,7 @@ export class Nexus {
         if (!actor.admin) this.repository.setCooldown(actor.id, this.now());
         this.finish(op, 'completed');
         this.repository.audit('create', actor.id, game.id, this.now());
-        this.queueNewGameAnnouncement(game);
+        this.queueNewGameAnnouncement(game, true);
       });
     } catch (error) {
       game.blocked = true;
@@ -861,7 +919,7 @@ export class Nexus {
           game.addedAt ??= this.now();
           this.repository.saveGame(game);
           if (op.data.announceNewGame === true && game.state === 'active')
-            this.queueNewGameAnnouncement(game);
+            this.queueNewGameAnnouncement(game, op.data.gameNotificationMessage === true);
         }
         this.finish(op, 'completed');
       }
@@ -1134,7 +1192,8 @@ export class Nexus {
                 game.addedAt ??= op.startedAt;
                 game.awaitingActivity = true;
                 this.repository.saveGame(game);
-                if (op.data.announceNewGame === true) this.queueNewGameAnnouncement(game);
+                if (op.data.announceNewGame === true)
+                  this.queueNewGameAnnouncement(game, op.data.gameNotificationMessage === true);
               }
               this.finish(op, 'completed');
               if (op.actorId && op.data.administrative !== true)

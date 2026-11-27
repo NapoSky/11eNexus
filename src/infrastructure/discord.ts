@@ -33,6 +33,7 @@ import {
 import type { Activity, Community, World, Repository } from '../application/ports.js';
 import type { Config } from './config.js';
 import { translator } from '../presentation/i18n.js';
+import { gameNotificationMessage } from '../presentation/game-messages.js';
 import { discordAttachment } from './images.js';
 import { logger } from './logger.js';
 import { createHash } from 'node:crypto';
@@ -179,6 +180,7 @@ export class DiscordCommunity implements Community {
           P.ManageChannels,
           P.ManageRoles,
           P.MentionEveryone,
+          P.PinMessages,
         ],
       },
     ];
@@ -525,6 +527,31 @@ export class DiscordCommunity implements Community {
       },
     });
     return message.id;
+  }
+  async sendGameNotificationMessage(game: Game): Promise<string> {
+    if (!game.channelId || game.state !== 'active' || game.blocked || game.retired)
+      throw new DomainError('invalidInput');
+    const channel = await this.parent(game.channelId);
+    if (channel.type !== ChannelType.GuildText || channel.parentId !== this.config.activeCategoryId)
+      throw new DomainError('needsReview');
+    const message = await channel.send({
+      ...gameNotificationMessage(game, game.assetId ? this.repository.asset(game.assetId) : null),
+      nonce: createHash('sha256')
+        .update(`game-notifications:${game.id}`)
+        .digest('hex')
+        .slice(0, 25),
+      enforceNonce: true,
+    });
+    return message.id;
+  }
+  async pinGameNotificationMessage(game: Game, messageId: string): Promise<void> {
+    if (!game.channelId) throw new DomainError('notFound');
+    const channel = await this.parent(game.channelId);
+    if (channel.type !== ChannelType.GuildText || channel.parentId !== this.config.activeCategoryId)
+      throw new DomainError('needsReview');
+    const message = await channel.messages.fetch(messageId);
+    if (message.author.id !== this.client.user!.id) throw new DomainError('needsReview');
+    if (!message.pinned) await message.pin('11eNexus game notifications');
   }
   async notify(game: Game, actorId: string, message: string): Promise<void> {
     const actor = await this.actor(actorId);

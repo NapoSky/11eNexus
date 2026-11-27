@@ -115,6 +115,8 @@ export class FakeCommunity implements MigrationCommunity {
   });
   notify = jest.fn(async () => {});
   announceNewGame = jest.fn(async () => 'announcement-message');
+  sendGameNotificationMessage = jest.fn(async (_game: Game) => 'notification-message');
+  pinGameNotificationMessage = jest.fn(async (_game: Game, _messageId: string) => {});
   alert = jest.fn(async () => {});
   prepareImportedRole = jest.fn(async (id: string) => {
     const role = this.world.roles.find((r) => r.id === id);

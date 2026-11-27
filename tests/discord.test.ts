@@ -56,7 +56,84 @@ test('new game channels have an empty description and keep their recovery reason
   expect(create).toHaveBeenCalledWith(
     expect.objectContaining({ name: 'openz', topic: '', reason: '11eNexus op:operation' }),
   );
+  expect(create.mock.calls[0]).toEqual([
+    expect.objectContaining({
+      permissionOverwrites: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'nexus-bot',
+          allow: expect.arrayContaining([P.PinMessages]),
+        }),
+      ]),
+    }),
+  ]);
 });
+
+test('game invitations use a stable nonce, suppress mentions and pin the confirmed bot message once', async () => {
+  Object.defineProperty(client, 'user', { value: { id: 'nexus-bot' }, configurable: true });
+  const g = game();
+  const message = {
+    id: 'invitation',
+    author: { id: 'nexus-bot' },
+    pinned: false,
+    pin: jest.fn(async () => {
+      message.pinned = true;
+    }),
+  };
+  const send = jest.fn(async () => message);
+  const fetch = jest.fn(async () => message);
+  jest.spyOn(gateway, 'guild').mockResolvedValue({
+    channels: {
+      fetch: async () => ({
+        type: ChannelType.GuildText,
+        parentId: gateway.config.activeCategoryId,
+        send,
+        messages: { fetch },
+      }),
+    },
+  } as unknown as Guild);
+  await expect(gateway.sendGameNotificationMessage(g)).resolves.toBe('invitation');
+  const first = send.mock.calls[0];
+  expect(first).toEqual([
+    expect.objectContaining({
+      nonce: expect.any(String),
+      enforceNonce: true,
+      allowedMentions: { parse: [] },
+      files: [expect.objectContaining({ name: 'game.png', attachment: Buffer.from(asset.bytes) })],
+    }),
+  ]);
+  await gateway.sendGameNotificationMessage(g);
+  expect(send.mock.calls[1]).toEqual(first);
+  await gateway.pinGameNotificationMessage(g, message.id);
+  await gateway.pinGameNotificationMessage(g, message.id);
+  expect(fetch).toHaveBeenCalledWith('invitation');
+  expect(message.pin).toHaveBeenCalledTimes(1);
+});
+
+test.each(['deleted-message', 'foreign-message', 'moved-channel'] as const)(
+  'pinning a %s never sends a replacement invitation',
+  async (failure) => {
+    Object.defineProperty(client, 'user', { value: { id: 'nexus-bot' }, configurable: true });
+    const pin = jest.fn();
+    const send = jest.fn();
+    const fetch = jest.fn(async () => {
+      if (failure === 'deleted-message') throw Object.assign(new Error('deleted'), { code: 10008 });
+      return { id: 'invitation', author: { id: 'someone-else' }, pinned: false, pin };
+    });
+    jest.spyOn(gateway, 'guild').mockResolvedValue({
+      channels: {
+        fetch: async () => ({
+          type: ChannelType.GuildText,
+          parentId: failure === 'moved-channel' ? 'unmanaged' : gateway.config.activeCategoryId,
+          send,
+          messages: { fetch },
+        }),
+      },
+    } as unknown as Guild);
+    await expect(gateway.pinGameNotificationMessage(game(), 'invitation')).rejects.toBeDefined();
+    expect(send).not.toHaveBeenCalled();
+    expect(pin).not.toHaveBeenCalled();
+  },
+);
 
 test.each([true, false])(
   'interrupted channel creation uses exact bot audit evidence (permission: %s)',

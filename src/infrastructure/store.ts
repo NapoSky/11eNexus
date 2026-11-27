@@ -253,7 +253,7 @@ export class Store implements Repository {
       this.db.prepare('DELETE FROM cooldowns WHERE at<=?').run(cutoff);
       this.db
         .prepare(
-          "DELETE FROM metadata WHERE key LIKE 'new-game-announcement:%' AND json_extract(value,'$.status')='sent' AND json_extract(value,'$.sentAt')<=?",
+          "DELETE FROM metadata WHERE (key LIKE 'new-game-announcement:%' OR key LIKE 'game-notification-message:%') AND json_extract(value,'$.status')='sent' AND json_extract(value,'$.sentAt')<=?",
         )
         .run(cutoff);
       this.db

@@ -95,6 +95,8 @@ export interface Community {
   deleteRole(roleId: string, operationId: string): Promise<void>;
   notify(game: Game, actorId: string, message: string): Promise<void>;
   announceNewGame(game: Game): Promise<string>;
+  sendGameNotificationMessage(game: Game): Promise<string>;
+  pinGameNotificationMessage(game: Game, messageId: string): Promise<void>;
   alert(key: string, textKey: string, values?: Record<string, string | number>): Promise<void>;
 }
 export interface Catalogue {
